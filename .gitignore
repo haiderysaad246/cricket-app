@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.local
+public/uploads/*
+!public/uploads/.gitkeep
+client/node_modules/
+client/dist/
+.kilo/

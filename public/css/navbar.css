@@ -1,0 +1,211 @@
+/* ============================================================
+   navbar.css — floating pill nav + admin auth widget
+   ============================================================ */
+
+.navbar-float-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 20px 0;
+}
+
+.navbar-pill {
+    display: flex;
+    align-items: center;
+    background-color: var(--color-surface);
+    border-radius: 999px;
+    padding: 8px 10px;
+    height: 3.25rem;
+    gap: 6px;
+    box-shadow: var(--shadow-nav);
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-decoration: none;
+    padding: 4px 16px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-item:hover {
+    background-color: var(--hover-subtle);
+}
+
+.nav-icon {
+    color: var(--color-text);
+    font-size: 15px;
+}
+
+.nav-label {
+    color: var(--color-text-soft);
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.nav-more {
+    background-color: var(--bg-nav-more);
+}
+
+.nav-more .nav-icon {
+    color: var(--color-surface-2);
+}
+
+.nav-more .nav-label {
+    display: none;
+}
+
+.nav-item:hover .nav-icon,
+.nav-item:hover .nav-label {
+    color: inherit;
+}
+
+/* Turfs - soft blue */
+a[href="/turfs"]:hover .nav-icon,
+a[href="/turfs"]:hover .nav-label,
+a[href="/turfs"].active .nav-icon,
+a[href="/turfs"].active .nav-label {
+    color: var(--color-accent);
+}
+
+/* Players - soft green */
+a[href="/players"]:hover .nav-icon,
+a[href="/players"]:hover .nav-label,
+a[href="/players"].active .nav-icon,
+a[href="/players"].active .nav-label {
+    color: var(--color-accent-green);
+}
+
+/* TCL / Trophy - light yellow */
+a[href="/tcl"]:hover .nav-icon,
+a[href="/tcl"]:hover .nav-label,
+a[href="/tcl"].active .nav-icon,
+a[href="/tcl"].active .nav-label {
+    color: var(--color-gold-soft);
+}
+
+/* Auction - soft orange/coral */
+a[href="/auction"]:hover .nav-icon,
+a[href="/auction"]:hover .nav-label,
+a[href="/auction"].active .nav-icon,
+a[href="/auction"].active .nav-label {
+    color: var(--color-blue-brand);
+}
+
+/* Active item gets the same subtle pill background as hover */
+.nav-item.active {
+    background-color: var(--hover-subtle);
+}
+
+/* More (three dots) - keep neutral, just brighten */
+.nav-more:hover .nav-icon,
+.nav-more:active .nav-icon {
+    color: var(--color-surface-2);
+    opacity: 0.7;
+}
+
+/* --- Admin login widget (top right) --- */
+.auth-widget {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.auth-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    border: none;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-nav);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-pill:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-hover);
+}
+
+.auth-pill .fa-user-shield { color: var(--color-success); }
+.auth-pill-logout { color: var(--color-text-soft); font-size: 11px; margin-left: 2px; }
+
+.auth-popover {
+    margin-top: 8px;
+    background-color: var(--color-surface);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    box-shadow: var(--shadow-popover);
+    width: 220px;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    padding-top: 0;
+    padding-bottom: 0;
+    transform: translateY(-6px);
+    transition: max-height 0.25s ease, opacity 0.2s ease, transform 0.2s ease, padding 0.25s ease;
+}
+
+.auth-popover.open {
+    max-height: 140px;
+    opacity: 1;
+    padding: 12px;
+    transform: translateY(0);
+}
+
+.auth-popover input[type="password"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-input-border);
+    color: var(--color-text);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.auth-popover-submit {
+    background-color: var(--color-success);
+    color: var(--color-surface);
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.auth-popover-submit:hover { transform: scale(1.08); }
+
+.auth-popover-hint {
+    flex: 1 1 100%;
+    color: var(--color-text-faint);
+    font-size: 10px;
+}
+
+.auth-popover-error {
+    flex: 1 1 100%;
+    color: var(--color-accent);
+    font-size: 10px;
+}

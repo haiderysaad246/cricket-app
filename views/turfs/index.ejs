@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | Turfs' }) %>
+</head>
+<body>
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="players-page">
+        <div class="players-toolbar">
+            <% if (isAdmin) { %>
+            <button class="toolbar-btn toolbar-btn-primary" type="button" id="createTurfBtn">
+                <i class="fa-solid fa-plus"></i>
+                <span>Create Turf</span>
+            </button>
+            <% } %>
+        </div>
+
+        <% if (!turfs.length) { %>
+            <p>No turfs yet. Create one to get started.</p>
+        <% } else { %>
+            <div class="fixture-list">
+                <% turfs.forEach(turf => { %>
+                    <a href="/turfs/session/<%= turf._id %>" class="fixture-card">
+                        <div class="fixture-card-top">
+                            <i class="fa-solid fa-folder-open fixture-card-folder-icon"></i>
+                            <div class="fixture-card-title"><%= turf.name %></div>
+                        </div>
+                        <div class="fixture-card-teams">
+                            <div class="fixture-card-team">
+                                <span class="fixture-card-team-name"><%= turf.team1Name %></span>
+                            </div>
+                            <span class="fixture-card-vs">vs</span>
+                            <div class="fixture-card-team">
+                                <span class="fixture-card-team-name"><%= turf.team2Name %></span>
+                            </div>
+                        </div>
+                        <% if (turf.date) { %>
+                            <div class="fixture-card-meta"><%= turf.date %></div>
+                        <% } %>
+                    </a>
+                <% }) %>
+            </div>
+        <% } %>
+    </div>
+
+    <!-- Create Turf modal: only asks for the folder's name/date/timing.
+         Team setup + roster happens the first time a match is added
+         inside the turf (see session.ejs). -->
+    <div class="confirm-overlay" id="createTurfOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <h2 class="add-player-title">Create Turf</h2>
+
+            <form action="/turfs/create" method="POST" id="createTurfForm" class="add-player-form">
+                <div class="form-group">
+                    <label for="turfName">Turf Name</label>
+                    <input type="text" name="name" id="turfName" autocomplete="off" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="turfDate">Date</label>
+                    <input type="date" name="date" id="turfDate" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="turfTiming">Timing</label>
+                    <input type="time" name="timing" id="turfTiming" autocomplete="off">
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelCreateTurf">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Create</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const overlay = document.getElementById('createTurfOverlay');
+            const createTurfBtn = document.getElementById('createTurfBtn');
+            if (createTurfBtn) {
+                createTurfBtn.addEventListener('click', () => {
+                    overlay.style.display = 'flex';
+                });
+            }
+            const cancelCreateTurf = document.getElementById('cancelCreateTurf');
+            if (cancelCreateTurf) {
+                cancelCreateTurf.addEventListener('click', () => {
+                    overlay.style.display = 'none';
+                    document.getElementById('createTurfForm').reset();
+                });
+            }
+        });
+    </script>
+
+    <%- include('../includes/scripts.ejs') %>
+</body>
+</html>

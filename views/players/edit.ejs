@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | Edit Player' }) %>
+</head>
+<body>
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="players-page">
+        <div class="add-player-form-wrapper">
+            <h2 class="add-player-title">Edit Player</h2>
+
+            <% if (typeof error !== 'undefined' && error) { %>
+                <div class="form-error"><%= error %></div>
+            <% } %>
+
+            <form action="/players/<%= player._id %>/edit" method="POST" class="add-player-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" name="name" id="name" value="<%= player.name %>" autocomplete="off" required>
+                </div>
+                <div class="form-group">
+                    <label for="role">Role</label>
+                    <select name="role" id="role" required>
+                        <option value="Batsmen" <%= player.role === 'Batsmen' ? 'selected' : '' %>>Batsmen</option>
+                        <option value="Bowler" <%= player.role === 'Bowler' ? 'selected' : '' %>>Bowler</option>
+                        <option value="All Rounder" <%= player.role === 'All Rounder' ? 'selected' : '' %>>All Rounder</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="handed">Batting/Bowling Hand</label>
+                    <select name="handed" id="handed" required>
+                        <option value="Right Handed" <%= player.handed === 'Right Handed' ? 'selected' : '' %>>Right Handed</option>
+                        <option value="Left Handed" <%= player.handed === 'Left Handed' ? 'selected' : '' %>>Left Handed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="image">Main Profile Picture</label>
+                    <img src="<%= player.image %>" alt="current image" class="current-thumb" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                    <input type="file" name="image" id="image" accept="image/png, image/jpeg, image/webp" autocomplete="off">
+                    <small class="form-hint">Leave empty to keep current image. Max size 2MB.</small>
+                </div>
+                <div class="form-group">
+                    <label for="image2">Alternate Picture</label>
+                    <img src="<%= player.image2 %>" alt="current alternate image" class="current-thumb" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                    <input type="file" name="image2" id="image2" accept="image/png, image/jpeg, image/webp" autocomplete="off">
+                    <small class="form-hint">Leave empty to keep current image. Max size 2MB.</small>
+                </div>
+
+                <div class="form-actions">
+                    <a href="/players" class="toolbar-btn">Cancel</a>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Save Changes</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <%- include('../includes/scripts.ejs') %>
+</body>
+</html>

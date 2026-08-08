@@ -1,0 +1,144 @@
+<% const oversDisplayTop = (balls) => Math.floor(balls / 6) + "." + (balls % 6); %>
+<%
+    const leftKey = match.currentInnings;
+    const rightKey = leftKey === "team1" ? "team2" : "team1";
+    const leftTeam = match[leftKey];
+    const rightTeam = match[rightKey];
+    const leftTeamLogo = (leftKey === "team1" ? match.team1TeamId : match.team2TeamId)?.logo;
+    const rightTeamLogo = (rightKey === "team1" ? match.team1TeamId : match.team2TeamId)?.logo;
+    const rightTeamDone = rightKey === match.battingFirst && match.currentInnings !== match.battingFirst;
+%>
+<% const liveTeam = match[match.currentInnings];
+   const liveStriker = liveTeam.batting.find((p) => String(p.id) === String(liveTeam.strikerId));
+   const liveNonStriker = liveTeam.batting.find((p) => String(p.id) === String(liveTeam.nonStrikerId));
+   const liveBowler = liveTeam.bowling.find((p) => String(p.id) === String(liveTeam.currentBowlerId));
+   const liveExtras = (liveTeam.extraWides || 0) + (liveTeam.extraNoBalls || 0);
+   const liveSecondKey = match.battingFirst === "team1" ? "team2" : "team1";
+   const liveTarget = match.currentInnings === liveSecondKey ? (match[match.battingFirst].totalRuns || 0) + 1 : null;
+   const ballChipClass = (b) => {
+       if (b === "W" || b.endsWith("W")) return "over-ball-wicket";
+       if (b.startsWith("wd") || b.startsWith("nb")) return "over-ball-extra";
+       if (b === "4" || b === "6") return "over-ball-boundary";
+       return "over-ball-normal";
+   };
+   const ballRuns = (b) => {
+       if (b === "W") return 0;
+       const runoutMatch = b.match(/^(\d+)W$/);
+       if (runoutMatch) return Number(runoutMatch[1]);
+       if (b.startsWith("wd")) { const m = b.match(/^wd\+(\d+)/); return 1 + (m ? Number(m[1]) : 0); }
+       if (b.startsWith("nb")) { const m = b.match(/^nb\+(\d+)/); return 1 + (m ? Number(m[1]) : 0); }
+       const n = Number(b);
+       return isNaN(n) ? 0 : n;
+   };
+   const liveOverRuns = (liveTeam.currentOverBalls || []).reduce((sum, b) => sum + ballRuns(b), 0);
+%>
+<div class="live-score-card">
+    <% if (match.result) { %>
+        <div class="live-result-banner"><%= match.result %></div>
+    <% } %>
+    <div class="live-score-row">
+        <div class="live-score-team">
+            <div class="live-team-badge live-team-badge-a">
+                <img src="<%= leftTeamLogo || '/images/placeholder-player.svg' %>" alt="<%= leftTeam.name %>" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+            </div>
+            <div class="live-team-name"><%= leftTeam.name %></div>
+        </div>
+
+        <div class="live-score-mid">
+            <div class="live-score-value"><%= leftTeam.totalRuns || 0 %>/<%= leftTeam.wickets || 0 %></div>
+            <div class="live-score-overs">(<%= oversDisplayTop(leftTeam.legalBalls || 0) %> ov)</div>
+        </div>
+
+        <div class="live-score-vs">VS</div>
+
+        <div class="live-score-mid <%= rightTeamDone ? 'live-innings-done' : '' %>">
+            <div class="live-score-value"><%= rightTeam.totalRuns || 0 %>/<%= rightTeam.wickets || 0 %></div>
+            <div class="live-score-overs">(<%= oversDisplayTop(rightTeam.legalBalls || 0) %> ov)</div>
+        </div>
+
+        <div class="live-score-team <%= rightTeamDone ? 'live-innings-done' : '' %>">
+            <div class="live-team-badge live-team-badge-b">
+                <img src="<%= rightTeamLogo || '/images/placeholder-player.svg' %>" alt="<%= rightTeam.name %>" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+            </div>
+            <div class="live-team-name"><%= rightTeam.name %></div>
+        </div>
+    </div>
+
+    <% if (liveBowler || liveStriker || liveNonStriker) { %>
+        <div class="live-inplay-grid">
+            <div class="live-batters-col">
+                <div class="live-inplay-heading">Batters</div>
+                <%
+                    const battingIds = liveTeam.batting.map((p) => String(p.id));
+                    const activeBatters = [liveStriker, liveNonStriker]
+                        .filter(Boolean)
+                        .sort((a, b) => battingIds.indexOf(String(a.id)) - battingIds.indexOf(String(b.id)));
+                %>
+                <% activeBatters.forEach((batter) => {
+                    const isOnStrike = String(batter.id) === String(liveTeam.strikerId);
+                %>
+                    <div class="live-player-line">
+                        <span class="on-strike-dot<%= isOnStrike ? ' is-active' : '' %>"></span>
+                        <span class="live-player-name"><%= batter.name %> <i class="fa-solid fa-cricket-bat-ball" style="<%= isOnStrike ? '' : 'visibility:hidden;' %>"></i></span>
+                        <span class="live-player-stat"><%= batter.runs %>/<%= batter.balls %></span>
+                    </div>
+                <% }) %>
+            </div>
+
+            <div class="live-bowler-col">
+                <div class="live-inplay-heading">Bowler</div>
+                <% if (liveBowler) { %>
+                    <div class="live-player-line">
+                        <span class="live-player-name"><%= liveBowler.name %></span>
+                        <span class="live-player-stat"><%= liveBowler.wickets %>/<%= liveBowler.balls %></span>
+                    </div>
+                <% } %>
+                <div class="live-over-balls">
+                    <% (liveTeam.currentOverBalls || []).forEach((b) => { %>
+                        <span class="over-ball-chip <%= ballChipClass(b) %>"><%= b %></span>
+                    <% }) %>
+                    <% if (!(liveTeam.currentOverBalls || []).length) { %>
+                        <span class="live-over-empty">Over not started</span>
+                    <% } %>
+                </div>
+                <% if ((liveTeam.currentOverBalls || []).length) { %>
+                    <div class="live-over-total">This over: <%= liveOverRuns %> run<%= liveOverRuns === 1 ? '' : 's' %></div>
+                <% } %>
+            </div>
+        </div>
+
+        <% if (liveTarget !== null && !match.result) {
+            const liveRunsNeeded = Math.max(liveTarget - (liveTeam.totalRuns || 0), 0);
+            const liveBallsLeft = Math.max((match.overs * 6) - (liveTeam.legalBalls || 0), 0);
+        %>
+            <div class="live-needed-row">Need <%= liveRunsNeeded %> runs in <%= liveBallsLeft %> balls</div>
+        <% } %>
+
+        <div class="live-summary-footer">
+            <% if (typeof chain !== 'undefined' && chain && chain.length > 1) { %>
+                <div class="live-chain-switcher">
+                    <i class="fa-solid fa-trophy live-chain-switcher-icon"></i>
+                    <select class="live-chain-select" onchange="if (this.value) window.location.href = '/turfs/live/' + this.value + '?leg=1';">
+                        <% chain.forEach((c) => { %>
+                            <option value="<%= c.id %>" <%= c.isCurrent ? 'selected' : '' %>><%= c.label %></option>
+                        <% }) %>
+                    </select>
+                </div>
+            <% } %>
+            <% if (liveTarget !== null) { %>
+                <div class="live-footer-item">
+                    <span class="live-footer-label">Target</span>
+                    <span class="live-footer-value"><%= liveTarget %></span>
+                </div>
+            <% } %>
+            <div class="live-footer-item">
+                <span class="live-footer-label">Extras</span>
+                <span class="live-footer-value"><%= liveExtras %> <span class="scorecard-extras-detail">(W <%= liveTeam.extraWides || 0 %>, NB <%= liveTeam.extraNoBalls || 0 %>)</span></span>
+            </div>
+            <div class="live-footer-item live-footer-item-right">
+                <span class="live-footer-label">Total</span>
+                <span class="live-footer-value"><%= liveTeam.totalRuns || 0 %>/<%= liveTeam.wickets || 0 %></span>
+            </div>
+        </div>
+    <% } %>
+</div>

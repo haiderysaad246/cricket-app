@@ -1,0 +1,34 @@
+<div class="stats-section">
+    <h3 class="stats-section-title">Batting Stats</h3>
+    <div class="stats-grid">
+        <div class="stat-item"><span class="stat-label">Runs</span><span class="stat-value"><%= stats.batting.runs %></span></div>
+        <div class="stat-item"><span class="stat-label">Matches</span><span class="stat-value"><%= stats.batting.matches %></span></div>
+        <div class="stat-item"><span class="stat-label">Ducks</span><span class="stat-value"><%= stats.batting.ducks %></span></div>
+        <div class="stat-item"><span class="stat-label">Innings</span><span class="stat-value"><%= stats.batting.innings %></span></div>
+        <div class="stat-item"><span class="stat-label">Balls Faced</span><span class="stat-value"><%= stats.batting.ballsFaced %></span></div>
+        <div class="stat-item"><span class="stat-label">Average</span><span class="stat-value"><%= stats.batting.average %></span></div>
+        <div class="stat-item"><span class="stat-label">Dots</span><span class="stat-value"><%= stats.batting.dots %></span></div>
+        <div class="stat-item"><span class="stat-label">Strike Rate</span><span class="stat-value"><%= stats.batting.strikeRate %></span></div>
+        <div class="stat-item"><span class="stat-label">4s / 6s</span><span class="stat-value"><%= stats.batting.fours %> / <%= stats.batting.sixes %></span></div>
+        <div class="stat-item"><span class="stat-label">Highest</span><span class="stat-value"><%= stats.batting.highest %></span></div>
+    </div>
+</div>
+
+<div class="stats-section">
+    <h3 class="stats-section-title">Bowling Stats</h3>
+    <div class="stats-grid">
+        <div class="stat-item"><span class="stat-label">Wickets</span><span class="stat-value"><%= stats.bowling.wickets %></span></div>
+        <div class="stat-item"><span class="stat-label">Maidens</span><span class="stat-value"><%= stats.bowling.maidens || 0 %></span></div>
+        <div class="stat-item"><span class="stat-label">Dot Ball %</span><span class="stat-value"><%= stats.bowling.dotBallPercentage %>%</span></div>
+        <div class="stat-item"><span class="stat-label">Innings</span><span class="stat-value"><%= stats.bowling.innings %></span></div>
+        <div class="stat-item"><span class="stat-label">No Ball Runs</span><span class="stat-value"><%= stats.bowling.noBallRuns %></span></div>
+        <div class="stat-item"><span class="stat-label">Overs</span><span class="stat-value"><%= stats.bowling.overs %></span></div>
+        <div class="stat-item"><span class="stat-label">Wide Runs</span><span class="stat-value"><%= stats.bowling.wideRuns %></span></div>
+        <div class="stat-item"><span class="stat-label">Ball Bowled</span><span class="stat-value"><%= stats.bowling.ballsBowled %></span></div>
+        <div class="stat-item"><span class="stat-label">Average</span><span class="stat-value"><%= stats.bowling.average %></span></div>
+        <div class="stat-item"><span class="stat-label">Runs Conceded</span><span class="stat-value"><%= stats.bowling.runsConceded %></span></div>
+        <div class="stat-item"><span class="stat-label">Economy Rate</span><span class="stat-value"><%= stats.bowling.economyRate %></span></div>
+        <div class="stat-item"><span class="stat-label">Dots</span><span class="stat-value"><%= stats.bowling.dots %></span></div>
+        <div class="stat-item"><span class="stat-label">Strike Rate</span><span class="stat-value"><%= stats.bowling.strikeRate %></span></div>
+    </div>
+</div>

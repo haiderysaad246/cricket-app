@@ -1,0 +1,259 @@
+/* Added for the React rebuild — animations & extra responsive polish only.
+   No colors changed; every color here already exists in style.css. */
+
+/* ---- Page + section entrance ---- */
+.page-fade-in { animation: pageFadeIn 0.35s ease both; }
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.form-pop-in { animation: formPopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@keyframes formPopIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ---- Player card stagger-in + hover lift ---- */
+.player-card-animated {
+  animation: cardIn 0.35s ease both;
+  animation-delay: calc(var(--stagger, 0) * 40ms);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.player-card-animated:hover { transform: translateY(-3px); }
+.player-card-animated { z-index: 0; }
+.player-card.menu-open { z-index: 20; }
+
+/* ---- Buttons ---- */
+.toolbar-btn { transition: transform 0.15s ease, filter 0.15s ease; }
+.toolbar-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.toolbar-btn:active { transform: translateY(0); }
+
+/* ---- Confirm modal ---- */
+.confirm-overlay-visible {
+  display: flex !important;
+  position: fixed !important;
+  inset: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100vw;
+  height: 100vh;
+  overflow-y: auto;
+  animation: overlayIn 0.15s ease both;
+}
+.confirm-overlay-visible .confirm-modal {
+  animation: modalIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  max-height: 85vh;
+  overflow-y: auto;
+  margin: auto;
+}
+
+/* ---- Stats tab underline transition ---- */
+.stats-tab { transition: color 0.15s ease, background-color 0.15s ease; }
+
+/* ---- Fix: profile/player photo must exactly fill its ring, never
+   shrink to intrinsic image size or get squashed by a generic `img`
+   reset from Bootstrap. Class selectors here are already higher
+   specificity than element selectors, this just makes it explicit. ---- */
+.profile-pic-ring img.profile-pic {
+  width: 150px;
+  height: 150px;
+  max-width: none;
+  display: block;
+  object-fit: cover;
+}
+.player-pic-ring img.player-pic {
+  width: 56px;
+  height: 56px;
+  max-width: none;
+  display: block;
+  object-fit: cover;
+}
+
+@media (max-width: 380px) {
+  .profile-pic-ring,
+  .profile-pic-ring img.profile-pic {
+    width: 120px;
+    height: 120px;
+  }
+}
+/* ---- Global layout containment (no color changes) ---- */
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.navbar-float-wrapper {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+.profile-header {
+  min-width: 0;
+}
+
+.profile-header-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-player-form input,
+.add-player-form select,
+.add-player-form textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.add-player-form-wrapper {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+}
+
+.form-actions {
+  flex-wrap: wrap;
+}
+
+.team-selected-chips .turf-player-chip span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.fixture-card {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.score-pad-wrapper,
+.confirm-overlay-visible .confirm-modal,
+.confirm-overlay-visible .turf-form-modal,
+.confirm-overlay-visible .picker-modal {
+  box-sizing: border-box;
+  width: min(100%, 480px);
+  max-width: calc(100vw - 24px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.score-pad-close-btn {
+  top: 8px;
+  left: 8px;
+}
+
+.scorecard-table-wrap,
+.points-table-wrap {
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .stats-tab {
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+
+  .fixture-card {
+    padding: 16px 14px;
+  }
+
+  .fixture-card-teams {
+    gap: 12px;
+  }
+
+  .live-inplay-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .live-bowler-col {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .live-bowler-col .live-player-line {
+    justify-content: flex-start;
+  }
+
+  .live-over-balls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-widget { top: 10px; right: 10px; }
+  .auth-pill span { display: none; } /* icon-only on very small screens */
+  .auth-pill { padding: 8px 10px; }
+  .navbar-float-wrapper {
+    padding-top: 4px;
+    padding-right: max(52px, env(safe-area-inset-right, 0px));
+  }
+  .navbar-pill {
+    max-width: 100%;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+  .navbar-pill::-webkit-scrollbar { display: none; }
+  .add-player-form-wrapper {
+    padding: 16px;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .stats-tabs {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 4px;
+  }
+  .stats-tab {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+  .form-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .form-actions .toolbar-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .players-page .profile-header {
+    padding-right: 0;
+  }
+  .player-card {
+    min-height: 84px;
+    height: auto;
+  }
+  .confirm-modal,
+  .turf-form-modal,
+  .picker-modal {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px);
+  }
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-in, .form-pop-in, .player-card-animated, .confirm-overlay-visible, .confirm-overlay-visible .confirm-modal {
+    animation: none !important;
+  }
+  .toolbar-btn, .player-card-animated { transition: none !important; }
+}

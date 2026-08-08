@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | Points Table' }) %>
+</head>
+<body>
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="players-page">
+        <h2 style="margin:16px 0;">Points Table <%= tournamentId ? '(Tournament)' : '' %></h2>
+        <% if (!table.length) { %>
+            <p>No completed matches found yet.</p>
+        <% } else { %>
+            <div class="points-table-wrap">
+                <table class="scorecard-table points-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Team</th>
+                            <th>P</th>
+                            <th>W</th>
+                            <th>L</th>
+                            <th>T</th>
+                            <th>NR</th>
+                            <th>Pts</th>
+                            <th>NNR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% table.forEach((row, idx) => { %>
+                            <tr>
+                                <td><%= idx + 1 %></td>
+                                <td>
+                                    <div class="points-team-cell">
+                                        <div class="points-team-avatar player-pic-ring">
+                                            <img src="<%= row.logo || '/images/placeholder-player.svg' %>" alt="<%= row.name %>" class="points-team-logo player-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                                        </div>
+                                        <div class="points-team-name">
+                                            <% if (row.id) { %>
+                                                <a href="/teams/<%= row.id %>"><%= row.name %></a>
+                                            <% } else { %>
+                                                <%= row.name %>
+                                            <% } %>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><%= row.played %></td>
+                                <td><%= row.wins %></td>
+                                <td><%= row.losses %></td>
+                                <td><%= row.ties %></td>
+                                <td><%= row.netRuns %></td>
+                                <td><%= row.points %></td>
+                                <td><%= (row.nrr >= 0 ? '+' : '') + row.nrr.toFixed(3) %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    </div>
+
+    <%- include('../includes/scripts.ejs') %>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | ' + turf.name }) %>
+</head>
+<body>
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="players-page">
+        <a href="/turfs" class="score-page-back-link" style="margin-bottom:16px;display:inline-flex;">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Back to Turfs</span>
+        </a>
+
+        <div class="resume-match-card" style="margin-bottom:16px; position:relative;">
+            <div class="resume-match-info">
+                <i class="fa-solid fa-folder-open resume-match-icon"></i>
+                <div>
+                    <div class="resume-match-title"><%= turf.name %></div>
+                    <% if (turf.overs) { %>
+                        <div class="resume-match-sub"><%= turf.team1Name %> vs <%= turf.team2Name %> &middot; <%= turf.overs %> overs a side</div>
+                    <% } else if (turf.date) { %>
+                        <div class="resume-match-sub"><%= turf.date %></div>
+                    <% } %>
+                </div>
+            </div>
+            <% if (liveMatch) { %>
+                <div class="resume-live-badge">LIVE</div>
+            <% } %>
+            <div class="resume-match-actions">
+                <% if (isAdmin) { %>
+                    <% if (liveMatch) { %>
+                        <a href="/turfs/live/<%= liveMatch._id %>" class="toolbar-btn toolbar-btn-primary">
+                            <i class="fa-solid fa-play"></i>
+                            <span>Resume Match</span>
+                        </a>
+                    <% } else if (!turf.overs) { %>
+                        <button type="button" class="toolbar-btn toolbar-btn-primary" id="startMatchBtn">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Add Match</span>
+                        </button>
+                        <form action="/turfs/session/<%= turf._id %>/end" method="POST"
+                              onsubmit="return confirm('End this turf? This permanently deletes it. This cannot be undone.');">
+                            <button type="submit" class="toolbar-btn toolbar-btn-danger">
+                                <i class="fa-solid fa-flag-checkered"></i>
+                                <span>End Turf</span>
+                            </button>
+                        </form>
+                    <% } else { %>
+                        <form action="/turfs" method="POST">
+<input type="hidden" name="turfId" value="<%= turf._id %>" autocomplete="off">
+                            <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                                <i class="fa-solid fa-plus"></i>
+                                <span>Add Match</span>
+                            </button>
+                        </form>
+                        <button type="button" class="toolbar-btn" id="startMatchBtn">
+                            <i class="fa-solid fa-gear"></i>
+                            <span>Change Settings</span>
+                        </button>
+                        <form action="/turfs/session/<%= turf._id %>/end" method="POST"
+                              onsubmit="return confirm('End this turf? This rolls all match stats into player profiles and permanently deletes the turf and its matches. This cannot be undone.');">
+                            <button type="submit" class="toolbar-btn toolbar-btn-danger">
+                                <i class="fa-solid fa-flag-checkered"></i>
+                                <span>End Turf</span>
+                            </button>
+                        </form>
+                    <% } %>
+                <% } %>
+            </div>
+        </div>
+
+        <div class="scorecard-tabs" id="turfStatTabs">
+            <button type="button" class="scorecard-tab turf-stat-tab active" data-stat="matches">Matches</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="mvp"><i class="fa-solid fa-star"></i> MVP</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="runs">Most Runs</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="sixes">Most Sixes</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="fours">Most Fours</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="wickets">Most Wickets</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="catches">Most Catches</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="average">Best Average</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="strikerate">Best Strike Rate</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="economy">Best Economy</button>
+        </div>
+
+        <div id="turfStatsPanel" style="display:none;">
+            <a href="#" class="score-page-back-link" id="backToMatchesBtn" style="margin-bottom:16px;display:inline-flex;">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>Turfs</span>
+            </a>
+            <div id="turfStatsContent"></div>
+        </div>
+
+        <div id="turfMatchesPanel">
+        <% if (!matches.length) { %>
+            <p>No matches yet in this turf.</p>
+        <% } else { %>
+            <div class="fixture-list">
+                <% matches.forEach((m, i) => { %>
+                    <a href="/turfs/live/<%= m._id %>" class="fixture-card">
+                        <div class="fixture-card-teams">
+                            <div class="fixture-card-team">
+                                <span class="fixture-card-team-name"><%= m.team1.name %></span>
+                                <span class="fixture-card-team-score"><%= m.team1.totalRuns %>/<%= m.team1.wickets %></span>
+                            </div>
+                            <span class="fixture-card-vs">vs</span>
+                            <div class="fixture-card-team">
+                                <span class="fixture-card-team-name"><%= m.team2.name %></span>
+                                <span class="fixture-card-team-score"><%= m.team2.totalRuns %>/<%= m.team2.wickets %></span>
+                            </div>
+                        </div>
+                        <div class="fixture-card-meta">
+                            Match <%= i + 1 %> &middot; <%= m.status === 'live' ? 'In Progress' : (m.result || 'Ended') %>
+                        </div>
+                    </a>
+                <% }) %>
+            </div>
+        <% } %>
+        </div>
+    </div>
+
+    <% if (!turf.overs) { %>
+    <!-- First-match setup modal: picks overs/toss/team names/roster and
+         locks them onto the turf. Only shown before the turf has had its
+         first match — reuses turfs.js's generic form/picker wiring. -->
+    <div class="confirm-overlay" id="newMatchOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <h2 class="add-player-title">Set Up First Match — <%= turf.name %></h2>
+
+            <form action="/turfs" method="POST" id="newMatchForm" class="add-player-form">
+                <input type="hidden" name="turfId" value="<%= turf._id %>">
+
+                <div class="form-group">
+                    <label for="overs">Overs</label>
+                    <input type="number" name="overs" id="overs" min="1" autocomplete="off" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Which team bats first?</label>
+                    <div class="toss-choice-group">
+                        <label class="toss-choice">
+                            <input type="radio" name="battingFirst" value="team1" checked autocomplete="off">
+                            <span id="battingFirstLabel-team1">Team 1</span>
+                        </label>
+                        <label class="toss-choice">
+                            <input type="radio" name="battingFirst" value="team2" autocomplete="off">
+                            <span id="battingFirstLabel-team2">Team 2</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="turf-team-form-block">
+                    <div class="form-group">
+                        <label for="team1Name">Team 1 Name</label>
+                        <input type="text" name="team1Name" id="team1Name" value="Team 1" autocomplete="off" required>
+                    </div>
+                    <button type="button" class="toolbar-btn team-picker-btn" data-team="team1">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Select Players</span>
+                    </button>
+                    <p class="turf-captain-hint">Tap a player's photo to make them captain</p>
+                    <div class="team-selected-chips" id="team1Chips"></div>
+                    <div id="team1Inputs"></div>
+                </div>
+
+                <div class="turf-team-form-block">
+                    <div class="form-group">
+                        <label for="team2Name">Team 2 Name</label>
+                        <input type="text" name="team2Name" id="team2Name" value="Team 2" autocomplete="off" required>
+                    </div>
+                    <button type="button" class="toolbar-btn team-picker-btn" data-team="team2">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Select Players</span>
+                    </button>
+                    <p class="turf-captain-hint">Tap a player's photo to make them captain</p>
+                    <div class="team-selected-chips" id="team2Chips"></div>
+                    <div id="team2Inputs"></div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelNewMatch">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Save Match</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <% } else { %>
+    <!-- Change Settings modal: edits the existing turf's overs/names/roster
+         (used for match 2+, where those fields are already locked in). -->
+    <div class="confirm-overlay" id="newMatchOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <h2 class="add-player-title">Change Settings — <%= turf.name %></h2>
+
+            <form action="/turfs/session/<%= turf._id %>/settings" method="POST" id="newMatchForm" class="add-player-form">
+                <div class="form-group">
+                    <label for="overs">Overs</label>
+                    <input type="number" name="overs" id="overs" min="1" autocomplete="off" required value="<%= turf.overs %>">
+                </div>
+
+                <div class="turf-team-form-block">
+                    <div class="form-group">
+                        <label for="team1Name">Team 1 Name</label>
+                        <input type="text" name="team1Name" id="team1Name" value="<%= turf.team1Name %>" autocomplete="off" required>
+                    </div>
+                    <button type="button" class="toolbar-btn team-picker-btn" data-team="team1">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Select Players</span>
+                    </button>
+                    <p class="turf-captain-hint">Tap a player's photo to make them captain</p>
+                    <div class="team-selected-chips" id="team1Chips"></div>
+                    <div id="team1Inputs"></div>
+                </div>
+
+                <div class="turf-team-form-block">
+                    <div class="form-group">
+                        <label for="team2Name">Team 2 Name</label>
+                        <input type="text" name="team2Name" id="team2Name" value="<%= turf.team2Name %>" autocomplete="off" required>
+                    </div>
+                    <button type="button" class="toolbar-btn team-picker-btn" data-team="team2">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Select Players</span>
+                    </button>
+                    <p class="turf-captain-hint">Tap a player's photo to make them captain</p>
+                    <div class="team-selected-chips" id="team2Chips"></div>
+                    <div id="team2Inputs"></div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelNewMatch">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Save Settings</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <% } %>
+
+    <div class="confirm-overlay" id="playerPickerOverlay">
+        <div class="confirm-modal picker-modal">
+            <h2 class="add-player-title" id="pickerTitle">Select Players</h2>
+
+            <div class="players-grid picker-grid" id="pickerGrid">
+                <% allPlayers.forEach(player => { %>
+                    <div class="player-card picker-player-card"
+                         data-id="<%= player._id %>"
+                         data-name="<%= player.name %>"
+                         data-image="<%= player.image %>">
+                        <div class="player-card-link">
+                            <div class="player-pic-ring">
+                                <img src="<%= player.image %>" alt="<%= player.name %>" class="player-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                            </div>
+                            <div class="player-info">
+                                <span class="player-name"><%= player.name %></span>
+                                <span class="player-meta"><%= player.handed %> <%= player.role %></span>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-circle-check picker-check-icon"></i>
+                    </div>
+                <% }) %>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="toolbar-btn" id="cancelPicker">Cancel</button>
+                <button type="button" class="toolbar-btn toolbar-btn-primary" id="donePicker">
+                    <i class="fa-solid fa-check"></i>
+                    <span>Done</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.TURF_MATCHES = <%- JSON.stringify(matches) %>;
+        window.TURF_PREFILL = {
+            team1Players: <%- JSON.stringify((turf.team1PlayerIds || []).map(id => {
+                const p = allPlayers.find(pl => String(pl._id) === String(id));
+                return p ? { id: p._id, name: p.name, image: p.image } : null;
+            }).filter(Boolean)) %>,
+            team2Players: <%- JSON.stringify((turf.team2PlayerIds || []).map(id => {
+                const p = allPlayers.find(pl => String(pl._id) === String(id));
+                return p ? { id: p._id, name: p.name, image: p.image } : null;
+            }).filter(Boolean)) %>,
+            team1Captain: <%- JSON.stringify(turf.team1CaptainId || null) %>,
+            team2Captain: <%- JSON.stringify(turf.team2CaptainId || null) %>
+        };
+    </script>
+    <%- include('../includes/scripts.ejs') %>
+    <script src="/js/turfs.js"></script>
+    <script src="/js/mvp.js"></script>
+    <script src="/js/turf-stats.js"></script>
+</body>
+</html>

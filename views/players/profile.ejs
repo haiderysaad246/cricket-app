@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | ' + player.name }) %>
+</head>
+<body>
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="profile-page">
+
+        <div class="profile-header">
+            <a href="/players" class="profile-back-btn" aria-label="Back to players">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+            <h1 class="profile-header-title">PROFILE</h1>
+        </div>
+
+        <div class="profile-pic-section">
+    <div class="profile-pic-ring">
+        <img src="<%= player.image2 || player.image %>" alt="<%= player.name %>" class="profile-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+        <span class="profile-rank-badge"><%= player.rank || '' %></span>
+    </div>
+</div>
+
+        <div class="profile-name-row">
+    <span class="profile-name"><%= player.name %></span>
+    <span class="profile-meta"><%= player.handed %> &middot; <%= player.role %></span>
+    <a href="/players/<%= player._id %>/edit" class="profile-edit-link">
+        <i class="fa-solid fa-pen"></i>
+        <span>Edit Profile</span>
+    </a>
+</div>
+
+        <div class="stats-tabs">
+            <button type="button" class="stats-tab active" data-tab="turf">turf stats</button>
+            <button type="button" class="stats-tab" data-tab="tcl">tcl</button>
+        </div>
+
+        <div class="stats-section">
+            <h3 class="stats-section-title">MVP Awards</h3>
+            <div class="stats-grid">
+                <div class="stat-item"><span class="stat-label">Match MVP</span><span class="stat-value"><%= player.matchMvpCount || 0 %></span></div>
+                <div class="stat-item"><span class="stat-label">Turf MVP</span><span class="stat-value"><%= player.turfMvpCount || 0 %></span></div>
+            </div>
+        </div>
+
+        <div class="stats-columns">
+
+            <!-- TURF STATS: turfStats already includes every TCL match too
+                 (see applyTeamStats in turf.controller.js — a TCL match writes
+                 into both turfStats and tclStats), so this is the true overall
+                 record. Render it directly; do NOT add tclStats on top or every
+                 TCL contribution gets double-counted. -->
+            <div class="stats-column active-panel" data-tab-panel="turf">
+                <%- include('../includes/stat-block.ejs', { stats: player.turfStats || { batting: {}, bowling: {} }, player: player }) %>
+            </div>
+
+            <!-- TCL: only tcl stats -->
+            <div class="stats-column" data-tab-panel="tcl">
+                <%- include('../includes/stat-block.ejs', { stats: player.tclStats || { batting: {}, bowling: {} }, player: player }) %>
+            </div>
+
+        </div>
+    </div>
+
+    <%- include('../includes/scripts.ejs') %>
+
+    <script>
+        const statsTabs = document.querySelectorAll('.stats-tab');
+        const statsPanels = document.querySelectorAll('[data-tab-panel]');
+
+        statsTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const target = tab.dataset.tab;
+
+                statsTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                statsPanels.forEach(panel => {
+                    panel.classList.toggle('active-panel', panel.dataset.tabPanel === target);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

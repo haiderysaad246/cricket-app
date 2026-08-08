@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | TCL' }) %>
+</head>
+<body class="tcl-theme">
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="players-page">
+        <div class="players-toolbar">
+            <% if (isAdmin) { %>
+            <button class="toolbar-btn toolbar-btn-primary" type="button" id="createTournamentBtn">
+                <i class="fa-solid fa-plus"></i>
+                <span>Add Tournament</span>
+            </button>
+            <% } %>
+        </div>
+
+        <% if (!tournaments.length) { %>
+            <p>No tournaments yet. Add one to get started.</p>
+        <% } else { %>
+            <div class="fixture-list">
+                <% tournaments.forEach(t => { %>
+                    <a href="/tcl/session/<%= t._id %>" class="fixture-card">
+                        <div class="fixture-card-top">
+                            <i class="fa-solid fa-trophy fixture-card-folder-icon"></i>
+                            <div class="fixture-card-title"><%= t.name %></div>
+                        </div>
+                        <% if (t.date || t.timing) { %>
+                            <div class="fixture-card-meta"><%= [t.date, t.timing].filter(Boolean).join(' · ') %></div>
+                        <% } %>
+                    </a>
+                <% }) %>
+            </div>
+        <% } %>
+    </div>
+
+    <div class="confirm-overlay" id="createTournamentOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <h2 class="add-player-title">Add Tournament</h2>
+
+            <form action="/tcl/create" method="POST" id="createTournamentForm" class="add-player-form">
+                <div class="form-group">
+                    <label for="tournamentName">Tournament Name</label>
+                    <input type="text" name="name" id="tournamentName" autocomplete="off" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="tournamentDate">Date</label>
+                    <input type="date" name="date" id="tournamentDate" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="tournamentTiming">Timing</label>
+                    <input type="time" name="timing" id="tournamentTiming" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="totalFixtures">Total fixtures (optional)</label>
+                    <input type="number" name="totalFixtures" id="totalFixtures" min="1" autocomplete="off" placeholder="e.g. 6">
+                    <small class="form-hint">If set, admins cannot schedule more than this many matches.</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelCreateTournament">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Create</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const overlay = document.getElementById('createTournamentOverlay');
+            const createTournamentBtn = document.getElementById('createTournamentBtn');
+            if (createTournamentBtn) {
+                createTournamentBtn.addEventListener('click', () => {
+                    overlay.style.display = 'flex';
+                });
+            }
+            const cancelCreateTournament = document.getElementById('cancelCreateTournament');
+            if (cancelCreateTournament) {
+                cancelCreateTournament.addEventListener('click', () => {
+                    overlay.style.display = 'none';
+                    document.getElementById('createTournamentForm').reset();
+                });
+            }
+        });
+    </script>
+
+    <%- include('../includes/scripts.ejs') %>
+</body>
+</html>

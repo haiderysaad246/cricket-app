@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | Live Match' }) %>
+</head>
+<body class="<%= match.tournamentId ? 'tcl-theme' : '' %>">
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="live-page">
+        <a href="<%= match.tournamentId ? '/tcl/session/' + match.tournamentId : '/turfs/session/' + match.turfId %>" class="score-page-back-link" style="margin-bottom:14px;display:inline-flex;">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Back</span>
+        </a>
+        <% if (isAdmin) { %>
+        <div class="live-end-match-form">
+            <form action="/turfs/live/<%= match._id %>/end" method="POST"
+                  onsubmit="return confirm('End this match? Do this only once both innings are finished.');">
+                <button type="submit" class="toolbar-btn toolbar-btn-danger">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                    <span>End Match</span>
+                </button>
+            </form>
+            <form action="/turfs/live/<%= match._id %>/cancel" method="POST"
+                  onsubmit="return confirm('Cancel this match? This deletes it and cannot be undone.');">
+                <button type="submit" class="toolbar-btn">
+                    <i class="fa-solid fa-xmark"></i>
+                    <span>Cancel Match</span>
+                </button>
+            </form>
+        </div>
+    <% } %>
+
+        <!-- Score summary card -->
+        <%- include('./includes/live-score-summary.ejs', { match, chain }) %>
+
+        <% const battingFirstTeam = match.battingFirst === 'team2' ? match.team2 : match.team1; %>
+         
+        <div class="live-match-status">
+            <%= battingFirstTeam.name %> bats first &middot; <%= match.overs %> overs a side
+        </div>
+
+        <% if (isAdmin) { %>
+        <div class="scoring-toolbar">
+            <button type="button" class="toolbar-btn toolbar-btn-primary" id="startInningsBtn">
+                <i class="fa-solid fa-play"></i>
+                <span id="startInningsLabel">Start</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-primary" id="scoreBallBtn" style="display:none;">
+                <i class="fa-solid fa-circle-play"></i>
+                <span>Resume</span>
+            </button>
+        </div>
+        <% } %>
+
+        <!-- This match is saved in the DB (see /turfs/live/<id>), so a
+             refresh or closing/reopening the app just re-loads this same
+             page — nothing here is lost. Ending the match is the only
+             thing that removes it from the "Resume Match" card on /turfs. -->
+        
+
+        <!-- Only a Scorecard is needed — Summary/Commentary tabs and the
+             video highlights section from the reference design are removed.
+             This toggle just switches which team's innings scorecard is shown.
+             The team batting first opens as the active tab by default. -->
+        <%
+            // Tabs always follow innings order (1st innings first, 2nd
+            // innings second) — that order never moves. What DOES move,
+            // to stay consistent with the top score card, is which side
+            // is "active" by default: whichever innings is currently live.
+            const firstInningsKey = match.battingFirst;
+            const secondInningsKey = firstInningsKey === "team1" ? "team2" : "team1";
+        %>
+        <div class="scorecard-tabs">
+            <button type="button" class="scorecard-tab" data-innings="players">Players</button>
+            <button type="button" class="scorecard-tab <%= match.currentInnings === firstInningsKey ? 'active' : '' %>" data-innings="<%= firstInningsKey %>">1st Innings</button>
+            <button type="button" class="scorecard-tab <%= match.currentInnings === secondInningsKey ? 'active' : '' %>" data-innings="<%= secondInningsKey %>">2nd Innings</button>
+            <button type="button" class="scorecard-tab" data-innings="mvp"><i class="fa-solid fa-star"></i> MVP</button>
+        </div>
+
+        <div class="scorecard-innings" id="innings-players" style="display:none;">
+            <div class="scorecard-block">
+                <h3 class="scorecard-section-title">Players</h3>
+                <div class="scorecard-table-wrap">
+                    <table class="scorecard-table">
+                        <thead>
+                            <tr>
+                                <th class="col-player"><%= match.team1.name %></th>
+                                <th class="col-player"><%= match.team2.name %></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% const team1Players = (match.team1.batting && match.team1.batting.length) ? match.team1.batting : (match.team2.bowling || []); %>
+                            <% const team2Players = (match.team2.batting && match.team2.batting.length) ? match.team2.batting : (match.team1.bowling || []); %>
+                            <% const maxPlayers = Math.max(team1Players.length, team2Players.length); %>
+                            <% if (!maxPlayers) { %>
+                                <tr>
+                                    <td class="col-player" colspan="2" style="color:#9ca3af; padding:16px; text-align:center;">No player roster data available yet.</td>
+                                </tr>
+                            <% } %>
+                            <% for (let i = 0; i < maxPlayers; i++) { %>
+                                <tr>
+<td class="col-player">
+                                        <% if (team1Players[i]) { %>
+                                            <div class="scorecard-player-cell">
+                                            <span class="scorecard-pic-wrap">
+                                                <img src="<%= team1Players[i].image || '/images/placeholder-player.svg' %>" alt="<%= team1Players[i].name %>" class="scorecard-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                                                <% if (team1Players[i].isCaptain) { %>
+                                                    <i class="fa-solid fa-crown scorecard-captain-badge" title="Captain"></i>
+                                                <% } %>
+                                            </span>
+                                            <div class="scorecard-player-info">
+                                                <span class="scorecard-player-name"><%= team1Players[i].name %><% if (team1Players[i].isCaptain) { %> <span class="scorecard-captain-tag">(C)</span><% } %></span>
+                                                <span class="scorecard-player-status"><%= team1Players[i].status || 'Player' %></span>
+                                            </div>
+                                            </div>
+                                        <% } %>
+                                    </td>
+                                    <td class="col-player">
+                                        <% if (team2Players[i]) { %>
+                                            <div class="scorecard-player-cell">
+                                            <span class="scorecard-pic-wrap">
+                                                <img src="<%= team2Players[i].image || '/images/placeholder-player.svg' %>" alt="<%= team2Players[i].name %>" class="scorecard-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                                                <% if (team2Players[i].isCaptain) { %>
+                                                    <i class="fa-solid fa-crown scorecard-captain-badge" title="Captain"></i>
+                                                <% } %>
+                                            </span>
+                                            <div class="scorecard-player-info">
+                                                <span class="scorecard-player-name"><%= team2Players[i].name %><% if (team2Players[i].isCaptain) { %> <span class="scorecard-captain-tag">(C)</span><% } %></span>
+                                                <span class="scorecard-player-status"><%= team2Players[i].status || 'Player' %></span>
+                                            </div>
+                                            </div>
+                                        <% } %>
+                                    </td>
+                                </tr>
+                            <% } %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="scorecard-innings" id="innings-<%= firstInningsKey %>" style="<%= match.currentInnings !== firstInningsKey ? 'display:none;' : '' %>">
+            <%- include('./scorecard-innings.ejs', { battingTeam: match[firstInningsKey], bowlingTeamName: match[secondInningsKey].name, target: match.currentInnings === secondInningsKey ? (match[secondInningsKey].totalRuns || 0) + 1 : null, matchFinished: !!match.result }) %>
+        </div>
+
+        <div class="scorecard-innings" id="innings-<%= secondInningsKey %>" style="<%= match.currentInnings !== secondInningsKey ? 'display:none;' : '' %>">
+            <%- include('./scorecard-innings.ejs', { battingTeam: match[secondInningsKey], bowlingTeamName: match[firstInningsKey].name, target: match.currentInnings === secondInningsKey ? (match[firstInningsKey].totalRuns || 0) + 1 : null, matchFinished: !!match.result }) %>
+        </div>
+
+        <div class="scorecard-innings" id="innings-mvp" style="display:none;">
+            <div id="mvpPanelContent"></div>
+        </div>
+    </div>
+
+    <% if (isAdmin) { %>
+    <!-- Innings setup: full 4-field form the first time (right after
+         creating the match); "Change Players" later only re-opens this
+         with the striker/non-striker/bowler section hidden, keeper only. -->
+    <div class="confirm-overlay" id="inningsSetupOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <button type="button" class="score-pad-close-btn modal-x-close" id="closeInningsSetup" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h2 class="add-player-title">Set Players</h2>
+            <form class="add-player-form" id="inningsSetupForm">
+                <div id="initialSetupFields">
+                    <div class="form-group">
+                        <label>Striker (on strike)</label>
+                        <button type="button" class="toolbar-btn role-pick-btn" data-role="striker">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Select Player</span>
+                        </button>
+                        <div class="role-picked-chip" id="pickedStriker"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Non-Striker</label>
+                        <button type="button" class="toolbar-btn role-pick-btn" data-role="nonStriker">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Select Player</span>
+                        </button>
+                        <div class="role-picked-chip" id="pickedNonStriker"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Bowler</label>
+                        <button type="button" class="toolbar-btn role-pick-btn" data-role="bowler">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Select Player</span>
+                        </button>
+                        <div class="role-picked-chip" id="pickedBowler"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Wicketkeeper</label>
+                    <button type="button" class="toolbar-btn role-pick-btn" data-role="keeper">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>Select Player</span>
+                    </button>
+                    <div class="role-picked-chip" id="pickedKeeper"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelInningsSetup">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+<!-- Shared single-select card picker, reused for every player choice above -->
+    <% } %>
+    <%- include('../includes/card-picker.ejs') %>
+
+    <script>
+        window.MATCH = <%- JSON.stringify(match) %>;
+    </script>
+    <%- include('../includes/scripts.ejs') %>
+    <script src="/js/live.js"></script>
+    <script src="/js/mvp.js"></script>
+</body>
+</html>

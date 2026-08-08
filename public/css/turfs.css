@@ -1,0 +1,267 @@
+/* ============================================================
+   turfs.css — turfs page, fixture/folder cards, resume cards,
+   turf cards, turf player chips, TCL match cards
+   ============================================================ */
+
+/* --- Resume match card (turf session / tcl session header) --- */
+.resume-match-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-green-chip);
+    border-radius: 16px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-card);
+}
+
+.resume-match-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    flex: 1;
+}
+
+.resume-match-icon { font-size: 26px; color: var(--color-accent); flex-shrink: 0; }
+.resume-match-title { color: var(--color-text); font-size: 15px; font-weight: 600; }
+.resume-match-sub { color: var(--color-text-muted); font-size: 13px; margin-top: 2px; }
+.resume-match-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.resume-live-badge {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: var(--color-danger-dark);
+    color: var(--color-text);
+    font-weight: 700;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    box-shadow: var(--live-badge-shadow);
+}
+
+/* --- Fixture / turf-folder cards (/turfs + match list) --- */
+.fixture-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.fixture-card {
+    display: block;
+    background: var(--hover-subtle-4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-soft);
+    border-radius: 18px;
+    padding: 20px 24px;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.fixture-card:hover {
+    background: var(--hover-subtle-3);
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+}
+
+.fixture-card-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    color: var(--color-text-muted);
+    font-size: 13px;
+}
+
+.fixture-card-folder-icon { color: var(--color-accent); }
+.fixture-card-title { color: var(--color-text); font-weight: 600; font-size: 14px; }
+
+.fixture-card-teams {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+}
+
+.fixture-card-team {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+    min-width: 0;
+}
+
+.fixture-card-team-name {
+    color: var(--color-text);
+    font-weight: 600;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.fixture-card-team-score { color: var(--color-text-muted); font-size: 13px; }
+.fixture-card-vs { color: var(--color-text-faint); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.fixture-card-meta { margin-top: 14px; text-align: center; color: var(--color-text-muted); font-size: 13px; }
+
+/* --- Turf cards + turf player chips (used in turf form pickers) --- */
+.turf-card {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background-color: var(--color-surface);
+    border-radius: 16px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-card);
+    box-sizing: border-box;
+}
+
+.turf-card-header { display: flex; gap: 8px; }
+
+.turf-card-badge {
+    background-color: var(--hover-subtle);
+    color: var(--color-text-soft);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.turf-card-teams { display: flex; align-items: center; gap: 12px; }
+
+.turf-team {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.turf-team-name { color: var(--color-text); font-size: 14px; font-weight: 700; }
+.turf-vs { color: var(--color-text-faint); font-size: 12px; font-weight: 700; flex-shrink: 0; }
+
+.turf-team-players { display: flex; flex-direction: column; gap: 6px; }
+
+.turf-player-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-soft);
+    font-size: 12px;
+}
+
+.turf-player-chip img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: var(--color-bg);
+    flex-shrink: 0;
+}
+
+/* --- TCL match cards (tournament session grid) --- */
+.tcl-match-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.tcl-match-card {
+    display: block;
+    background: var(--hover-subtle-4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-soft);
+    border-radius: 18px;
+    padding: 18px 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.tcl-match-card:hover {
+    background: var(--hover-subtle-3);
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+}
+
+.tcl-match-card-status {
+    display: inline-block;
+    margin-bottom: 14px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    background-color: var(--hover-subtle);
+    color: var(--color-text-muted);
+}
+
+.tcl-match-card-status.is-live { background-color: var(--bg-live); color: var(--color-accent); }
+.tcl-match-card-status.is-completed { background-color: var(--bg-completed); color: var(--color-success); }
+.tcl-match-card-status.is-upcoming { background-color: var(--bg-upcoming); color: var(--color-text-muted); }
+
+.tcl-match-card-teams {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+}
+
+.tcl-match-card-team {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    min-width: 0;
+}
+
+.tcl-match-card-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-soft);
+}
+
+.tcl-match-card-team-name {
+    color: var(--color-text);
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.tcl-match-card-team-score { color: var(--color-text-muted); font-size: 13px; }
+.tcl-match-card-vs { color: var(--color-text-faint); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.tcl-match-card-meta { margin-top: 14px; text-align: center; color: var(--color-text-muted); font-size: 13px; }
+
+/* --- Responsive --- */
+@media (max-width: 480px) {
+    .resume-match-card { flex-direction: column; align-items: stretch; padding: 14px; }
+    .resume-match-info { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .resume-live-badge { position: static; align-self: flex-start; margin-top: 4px; }
+    .resume-match-actions { width: 100%; flex-direction: column; }
+    .resume-match-actions .toolbar-btn { width: 100%; }
+    .tcl-match-grid { grid-template-columns: 1fr; }
+
+    .turf-card-teams { flex-direction: column; align-items: stretch; gap: 10px; }
+    .turf-vs { align-self: center; }
+}

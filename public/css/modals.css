@@ -1,0 +1,389 @@
+/* ============================================================
+   modals.css — confirm overlay/modal, turf/picker modals,
+   player-picker, IG picker, score-pad modal buttons
+   ============================================================ */
+
+.confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg-overlay);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.confirm-modal {
+    position: relative;
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 320px;
+    width: 90%;
+    color: var(--color-text);
+    text-align: center;
+    box-shadow: var(--shadow-card);
+}
+
+.confirm-modal p {
+    color: var(--color-text-soft);
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.confirm-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+/* --- Turf form / picker modal sizing --- */
+.turf-form-modal,
+.picker-modal {
+    max-width: 480px;
+    max-height: 85vh;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.turf-form-modal .add-player-title,
+.picker-modal .add-player-title { text-align: center; }
+
+/* --- Turf team form blocks --- */
+.turf-team-form-block {
+    border-top: 1px solid var(--border-softer);
+    padding-top: 16px;
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.team-picker-btn { align-self: flex-start; }
+
+.team-selected-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.team-selected-chips .turf-player-chip {
+    background-color: var(--color-bg);
+    border-radius: 999px;
+    padding: 4px 10px 4px 4px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    user-select: none;
+}
+
+.team-selected-chips .turf-player-chip.is-captain {
+    border-color: var(--color-amber);
+    background-color: var(--color-surface-6);
+}
+
+.turf-chip-pic-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.turf-captain-badge {
+    position: absolute;
+    bottom: -3px;
+    right: -4px;
+    color: var(--color-amber);
+    background-color: var(--color-ink);
+    border-radius: 50%;
+    font-size: 9px;
+    width: 13px;
+    height: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.turf-captain-hint { color: var(--color-text-faint); font-size: 11px; margin: 0; }
+
+.toss-choice-group { display: flex; gap: 16px; }
+
+.toss-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-soft);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.toss-choice input { accent-color: var(--color-accent-green); }
+
+/* --- Player picker modal (WhatsApp-style multi select) --- */
+#playerPickerOverlay { z-index: 1100; }
+
+.picker-grid {
+    max-height: 50vh;
+    overflow-y: auto;
+    gap: 10px;
+    padding-right: 4px;
+}
+
+.picker-player-card {
+    max-width: 100%;
+    height: auto;
+    padding: 10px 14px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.15s ease, opacity 0.15s ease;
+    position: relative;
+}
+
+.picker-player-card .player-card-link {
+    text-decoration: none;
+    pointer-events: none;
+}
+
+.picker-check-icon {
+    display: none;
+    color: var(--color-accent-green);
+    font-size: 20px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.picker-player-card.picker-selected { border-color: var(--color-accent-green); }
+.picker-player-card.picker-selected .picker-check-icon { display: block; }
+.picker-player-card.picker-disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* --- IG share-sheet style picker (score page) --- */
+.ig-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 16px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 4px 4px 4px 0;
+}
+
+.ig-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-align: center;
+}
+
+.ig-picker-avatar-ring {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    padding: 2px;
+    transition: border-color 0.15s ease;
+}
+
+.ig-picker-avatar-ring img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: var(--color-bg);
+    display: block;
+}
+
+.ig-picker-check {
+    display: none;
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: var(--color-accent-green);
+    color: var(--color-ink);
+    font-size: 11px;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--color-ink);
+}
+
+.ig-picker-name {
+    font-size: 12px;
+    color: var(--color-text-soft);
+    max-width: 76px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ig-picker-item.ig-picker-selected .ig-picker-avatar-ring { border-color: var(--color-accent-green); }
+.ig-picker-item.ig-picker-selected .ig-picker-check { display: flex; }
+
+/* ============================================================
+   Score-pad modal buttons (undo/close) + header/backbar/grid
+   ============================================================ */
+.score-pad-modal {
+    position: relative;
+    max-width: 420px;
+    width: 100%;
+    text-align: left;
+    padding: 0;
+    overflow: hidden;
+}
+
+.score-pad-wrapper {
+    position: relative;
+    max-width: 420px;
+    width: 90%;
+}
+
+.score-pad-undo-btn {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border-soft);
+    background-color: var(--color-surface-2);
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.score-pad-undo-btn:hover { background-color: var(--hover-subtle); }
+
+.score-pad-close-btn {
+    position: absolute;
+    top: -14px;
+    left: -14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border-soft);
+    background-color: var(--color-surface-2);
+    color: var(--color-text);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+    box-shadow: var(--shadow-close);
+}
+
+.score-pad-close-btn:hover { background-color: var(--hover-subtle); }
+
+.score-pad-header {
+    padding: 20px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--color-text);
+    text-align: center;
+    min-height: 28px;
+}
+
+.score-pad-backbar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    background-color: var(--color-black);
+    color: var(--color-text);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.score-pad-backbar:hover { background-color: var(--color-surface-2); }
+
+.score-pad-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 20px;
+}
+
+.score-pad-btn {
+    padding: 18px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-soft);
+    background-color: var(--color-surface-2);
+    color: var(--color-text);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.score-pad-btn:hover:not([disabled]) { background-color: var(--hover-subtle); }
+
+.score-pad-btn-selected {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-text);
+}
+
+.score-pad-btn-disabled { opacity: 0.35; cursor: not-allowed; }
+
+.score-pad-done {
+    width: calc(100% - 40px);
+    margin: 0 20px 20px;
+    justify-content: center;
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-text);
+}
+
+.score-pad-done:hover {
+    background-color: var(--color-accent-dark);
+    color: var(--color-text);
+}
+
+.score-pad-btn-span2 { grid-column: 1 / -1; }
+
+@media (max-width: 480px) {
+    .turf-form-modal,
+    .picker-modal { max-width: 100%; }
+
+    /* Make the confirm overlay + modal responsive on small screens.
+       The overlay scrolls instead of clipping, the modal fills the
+       width with safe padding, and its content can scroll if it's
+       taller than the viewport. */
+    .confirm-overlay {
+        align-items: flex-start;
+        justify-content: center;
+        padding: 16px 12px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .confirm-modal {
+        width: 100%;
+        max-width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 20px 16px;
+        margin: auto 0;
+    }
+
+    .confirm-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .confirm-actions .toolbar-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+.turf-form-modal .modal-x-close {
+    top: 10px;
+    right: 10px;
+    left: auto;
+}

@@ -1,0 +1,49 @@
+<div class="auth-widget" id="authWidget">
+  <% if (isAdmin) { %>
+    <button type="button" class="auth-pill" id="logoutBtn">
+      <i class="fa-solid fa-user-shield"></i>
+      <span>Admin</span>
+      <i class="fa-solid fa-arrow-right-from-bracket auth-pill-logout"></i>
+    </button>
+  <% } else { %>
+    <button type="button" class="auth-pill" id="loginToggleBtn">
+      <i class="fa-solid fa-lock"></i>
+      <span>Login</span>
+    </button>
+    <form class="auth-popover" id="loginPopover">
+      <input type="password" name="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit" class="auth-popover-submit"><i class="fa-solid fa-arrow-right"></i></button>
+      <small class="auth-popover-hint">Its only for admin</small>
+      <small class="auth-popover-error" id="loginError"></small>
+    </form>
+  <% } %>
+</div>
+
+<div class="navbar-float-wrapper">
+  <nav class="navbar-pill">
+    <a class="nav-item <%= currentPath === '/turfs' ? 'active' : '' %>" href="/turfs">
+      <i class="fa-solid fa-map-location-dot nav-icon"></i>
+      <span class="nav-label">Turfs</span>
+    </a>
+    <a class="nav-item <%= currentPath === '/players' ? 'active' : '' %>" href="/players">
+      <i class="fa-solid fa-people-group nav-icon"></i>
+      <span class="nav-label">Players</span>
+    </a>
+    <a class="nav-item <%= currentPath === '/tcl' ? 'active' : '' %>" href="/tcl">
+      <i class="fa-solid fa-trophy nav-icon"></i>
+      <span class="nav-label">TCL</span>
+    </a>
+    <a class="nav-item <%= currentPath.startsWith('/teams') ? 'active' : '' %>" href="/teams">
+      <i class="fa-solid fa-shield-halved nav-icon"></i>
+      <span class="nav-label">Teams</span>
+    </a>
+    <a class="nav-item <%= currentPath === '/points' ? 'active' : '' %>" href="/points">
+      <i class="fa-solid fa-list-ol nav-icon"></i>
+      <span class="nav-label">Points</span>
+    </a>
+    <button class="nav-item nav-more" type="button">
+      <i class="fa-solid fa-ellipsis nav-icon"></i>
+      <span class="nav-label">More</span>
+    </button>
+  </nav>
+</div>

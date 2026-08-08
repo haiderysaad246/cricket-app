@@ -1,0 +1,113 @@
+<%
+    const oversDisplay = (balls) => Math.floor(balls / 6) + "." + (balls % 6);
+    const sr = (runs, balls) => balls > 0 ? ((runs / balls) * 100).toFixed(2) : "0.00";
+    const econ = (runs, balls) => balls > 0 ? (runs / (balls / 6)).toFixed(2) : "0.00";
+%>
+<div class="scorecard-block">
+    <h3 class="scorecard-section-title">Batting</h3>
+    <div class="scorecard-table-wrap">
+        <table class="scorecard-table">
+            <thead>
+                <tr>
+                    <th class="col-player">Batter</th>
+                    <th>R</th>
+                    <th>B</th>
+                    <th>4s</th>
+                    <th>6s</th>
+                    <th>SR</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% battingTeam.batting.forEach(player => {
+                    const isOnStrike = battingTeam.strikerId && String(battingTeam.strikerId) === String(player.id);
+                    const isNonStrike = battingTeam.nonStrikerId && String(battingTeam.nonStrikerId) === String(player.id);
+                     let statusText = "yet to bat";
+                    if (player.status === "out" || player.status === "retired") statusText = player.dismissalText || (player.status === "retired" ? "Retired Out" : "out");
+                    else if (isOnStrike) statusText = "batting*";
+                    else if (isNonStrike) statusText = "batting";
+                    if (typeof matchFinished !== 'undefined' && matchFinished && statusText !== "out" && statusText !== "Retired Out" && !(player.dismissalText)) statusText = "";
+                %>
+                    <tr data-player-id="<%= player.id %>" class="<%= (player.status === 'out' || player.status === 'retired') ? 'scorecard-row-out' : '' %>">
+<td class="col-player">
+                            <div class="scorecard-player-cell">
+                            <span class="scorecard-pic-wrap">
+                                <img src="<%= player.image %>" alt="<%= player.name %>" class="scorecard-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                                <% if (player.isCaptain) { %>
+                                    <i class="fa-solid fa-crown scorecard-captain-badge" title="Captain"></i>
+                                <% } %>
+                            </span>
+                            <div class="scorecard-player-info">
+                                <span class="scorecard-player-name"><%= player.name %><% if (player.isCaptain) { %> <span class="scorecard-captain-tag">(C)</span><% } %><% if (isOnStrike) { %> <i class="fa-solid fa-cricket-bat-ball scorecard-strike-icon" title="On strike"></i><% } %></span>
+                                <span class="scorecard-player-status"><%= statusText %></span>
+                            </div>
+                            </div>
+                        </td>
+                        <td class="stat-runs"><%= player.runs %></td>
+                        <td class="stat-balls"><%= player.balls %></td>
+                        <td class="stat-fours"><%= player.fours %></td>
+                        <td class="stat-sixes"><%= player.sixes %></td>
+                        <td class="stat-sr"><%= sr(player.runs, player.balls) %></td>
+                    </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+
+    <% if (typeof target !== 'undefined' && target !== null) { %>
+        <div class="scorecard-extras-row">
+            <span>Target</span>
+            <span class="stat-extras"><%= target %></span>
+        </div>
+    <% } %>
+    <% const extrasTotal = (battingTeam.extraWides || 0) + (battingTeam.extraNoBalls || 0); %>
+    <div class="scorecard-extras-row">
+        <span>Extras</span>
+        <span class="stat-extras"><%= extrasTotal %> <span class="scorecard-extras-detail">(W <%= battingTeam.extraWides || 0 %>, NB <%= battingTeam.extraNoBalls || 0 %>)</span></span>
+    </div>
+    <div class="scorecard-total-row">
+        <span>Total</span>
+        <span class="stat-total"><%= battingTeam.totalRuns || 0 %>/<%= battingTeam.wickets || 0 %> <span class="scorecard-extras-detail">(<%= oversDisplay(battingTeam.legalBalls || 0) %> ov)</span></span>
+    </div>
+
+    <h3 class="scorecard-section-title">
+        Bowling <span class="scorecard-section-sub">&mdash; <%= bowlingTeamName %></span>
+    </h3>
+    <div class="scorecard-table-wrap">
+        <table class="scorecard-table">
+            <thead>
+                <tr>
+                    <th class="col-player">Bowler</th>
+                    <th>O</th>
+                    <th>M</th>
+                    <th>R</th>
+                    <th>W</th>
+                    <th>Econ</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% battingTeam.bowling.forEach(player => { %>
+                    <tr data-player-id="<%= player.id %>" class="<%= (battingTeam.currentBowlerId && String(battingTeam.currentBowlerId) === String(player.id)) ? 'scorecard-row-bowling' : '' %>">
+<td class="col-player">
+                            <div class="scorecard-player-cell">
+                            <span class="scorecard-pic-wrap">
+                                <img src="<%= player.image %>" alt="<%= player.name %>" class="scorecard-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                                <% if (player.isCaptain) { %>
+                                    <i class="fa-solid fa-crown scorecard-captain-badge" title="Captain"></i>
+                                <% } %>
+                            </span>
+                            <div class="scorecard-player-info">
+                                <span class="scorecard-player-name"><%= player.name %><% if (player.isCaptain) { %> <span class="scorecard-captain-tag">(C)</span><% } %></span>
+                            </div>
+                            </div>
+                        </td>
+                        <td class="stat-overs"><%= oversDisplay(player.balls || 0) %></td>
+                        <td class="stat-maidens"><%= player.maidens %></td>
+                        <td class="stat-runs-conceded"><%= player.runs %></td>
+                        <td class="stat-wickets"><%= player.wickets %></td>
+                        <td class="stat-econ"><%= econ(player.runs, player.balls || 0) %></td>
+                    </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | Add Player' }) %>
+</head>
+<body>
+    <%- include('../includes/navbar.ejs') %>
+
+    <div class="players-page">
+    <div class="add-player-form-wrapper">
+        <div class="add-player-header">
+            <h2 class="add-player-title">Add Player</h2>
+            <a href="/players" class="profile-back-btn" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </a>
+        </div>
+
+        <% if (typeof error !== 'undefined' && error) { %>
+            <div class="form-error"><%= error %></div>
+        <% } %>
+
+        <form action="/players" method="POST" class="add-player-form needs-validation" enctype="multipart/form-data" novalidate>
+            <div class="form-group">
+                <label for="name">Name</label>
+                <input type="text" name="name" id="name" value="<%= typeof formData !== 'undefined' && formData.name ? formData.name : '' %>" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+    <label for="role">Role</label>
+    <select name="role" id="role" required>
+        <option value="" disabled <%= typeof formData !== 'undefined' && formData.role ? '' : 'selected' %>>Select role</option>
+        <option value="Batsmen" <%= typeof formData !== 'undefined' && formData.role === 'Batsmen' ? 'selected' : '' %>>Batsmen</option>
+        <option value="Bowler" <%= typeof formData !== 'undefined' && formData.role === 'Bowler' ? 'selected' : '' %>>Bowler</option>
+        <option value="All Rounder" <%= typeof formData !== 'undefined' && formData.role === 'All Rounder' ? 'selected' : '' %>>All Rounder</option>
+    </select>
+</div>
+            <div class="form-group">
+    <label for="handed">Batting/Bowling Hand</label>
+    <select name="handed" id="handed" required>
+        <option value="" disabled <%= typeof formData !== 'undefined' && formData.handed ? '' : 'selected' %>>Select hand</option>
+        <option value="Right Handed" <%= typeof formData !== 'undefined' && formData.handed === 'Right Handed' ? 'selected' : '' %>>Right Handed</option>
+        <option value="Left Handed" <%= typeof formData !== 'undefined' && formData.handed === 'Left Handed' ? 'selected' : '' %>>Left Handed</option>
+    </select>
+</div>
+            <div class="form-group">
+                <label for="image">Main Profile Picture</label>
+                <input type="file" name="image" id="image" accept="image/png, image/jpeg, image/webp" autocomplete="off">
+                <small class="form-hint">Optional. Square image, min 500x500px. Max size 2MB.</small>
+            </div>
+            <div class="form-group">
+                <label for="image2">Alternate Picture (shown on profile)</label>
+                <input type="file" name="image2" id="image2" accept="image/png, image/jpeg, image/webp" autocomplete="off">
+                <small class="form-hint">Optional. Square image, min 500x500px. Max size 2MB.</small>
+            </div>
+            <div class="form-actions">
+                <a href="/players" class="toolbar-btn">Cancel</a>
+                <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Add Player</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+    <%- include('../includes/scripts.ejs') %>
+</body>
+</html>

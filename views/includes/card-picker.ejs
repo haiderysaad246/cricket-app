@@ -1,0 +1,26 @@
+<%# Shared single-select card picker modal.
+    Reused by turfs/live.ejs (innings setup), turfs/score.ejs (fielder /
+    dismissed batter / new batsman), and turfs/session.ejs (team roster).
+    Every id referenced by live.js / score.js / turf-stats.js is preserved.
+    The score page's picker additionally needs a #cardPickerCloseBtn (it
+    renders its own close button); pass `showClose` (truthy string 'true')
+    to include it (used by the full-page scorer). %>
+<div class="confirm-overlay" id="cardPickerOverlay">
+    <div class="confirm-modal picker-modal">
+        <% if (typeof showClose !== 'undefined' && showClose === 'true') { %>
+            <button type="button" class="score-pad-close-btn" id="cardPickerCloseBtn" title="Cancel — nothing will be recorded">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        <% } %>
+        <h2 class="add-player-title" id="cardPickerTitle">Select Player</h2>
+        <div class="players-grid picker-grid" id="cardPickerGrid"></div>
+        <div class="form-actions">
+            <button type="button" class="toolbar-btn" id="cancelCardPicker">Cancel</button>
+            <button type="button" class="toolbar-btn toolbar-btn-primary" id="confirmCardPicker">
+                <i class="fa-solid fa-check"></i>
+                <span>Select</span>
+            </button>
+        </div>
+    </div>
+</div>
+

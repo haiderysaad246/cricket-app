@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('../includes/head.ejs', { title: 'Cricket | Score Ball' }) %>
+</head>
+<body>
+    <div class="score-page">
+        <div class="score-page-top">
+            <a href="/turfs/live/<%= match._id %>" class="score-page-back-link">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>Back to Match</span>
+            </a>
+            <button type="button" class="toolbar-btn" id="changeKeeperBtn" style="margin-bottom:10px;">
+                <i class="fa-solid fa-user-shield"></i>
+                <span>Change Wicketkeeper</span>
+            </button>
+            <button type="button" class="toolbar-btn toolbar-btn-danger" id="endInningsBtn" style="margin-bottom:10px;">
+                <i class="fa-solid fa-flag-checkered"></i>
+                <span>End Innings</span>
+            </button>
+            <%- include('./includes/live-score-summary.ejs', { match }) %>
+        </div>
+
+        <!-- Input box: header shows a live preview of the current selection,
+             back-bar steps up one level, grid shows the current level's
+             options, Done saves once a leaf option is picked. Only the
+             Runs branch is wired up for now — Out/Wide/No Ball are
+             disabled placeholders until we build those next. -->
+        <div class="score-page-input-box" id="scoreInputBox">
+            <button type="button" class="score-pad-undo-btn" id="scorePadUndoBtn" title="Undo last ball" style="display:none;">
+    <i class="fa-solid fa-rotate-left"></i>
+</button>
+<button type="button" class="score-pad-close-btn" id="scorePadCloseBtn" title="Cancel — nothing will be recorded" style="display:none;">
+    <i class="fa-solid fa-xmark"></i>
+</button>
+            <div class="score-pad-header" id="scorePadHeader"></div>
+            <div class="score-pad-backbar" id="scorePadBackBar">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>Back</span>
+            </div>
+            <div class="score-pad-grid" id="scorePadGrid"></div>
+        </div>
+    </div>
+<%- include('../includes/card-picker.ejs', { showClose: 'true' }) %>
+
+    <script>
+        window.MATCH = <%- JSON.stringify(match) %>;
+    </script>
+    <%- include('../includes/scripts.ejs') %>
+    <script src="/js/score.js"></script>
+</body>
+</html>

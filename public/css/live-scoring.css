@@ -1,0 +1,905 @@
+/* ============================================================
+   live-scoring.css — live match page, full-page scorer, scorecard
+   tables, score pad, ball buttons, in-play summary, MVP panel
+   ============================================================ */
+
+.live-page {
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    box-sizing: border-box;
+}
+
+/* Admin end/cancel match controls */
+.live-end-match-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.live-end-match-form form { margin: 0; }
+
+/* --- Full-page scorer (score.ejs) --- */
+.score-page {
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    box-sizing: border-box;
+}
+
+.score-page-top { margin-bottom: 6px; }
+
+.score-page-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-soft);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 14px;
+    transition: color 0.15s ease;
+}
+
+.score-page-back-link:hover { color: var(--color-text); }
+
+.score-page-input-box {
+    position: relative;
+    margin-top: 20px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+}
+
+.score-page-input-box .score-pad-header {
+    padding: 24px 60px;
+    font-size: 22px;
+}
+
+.score-page-input-box .score-pad-close-btn {
+    top: 12px;
+    left: auto;
+    right: 12px;
+}
+
+.score-page-input-box .score-pad-grid {
+    grid-template-columns: repeat(4, 1fr);
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.score-pad-section-label {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-faint);
+    margin-top: 6px;
+}
+
+.score-pad-section-label:first-child { margin-top: 0; }
+
+.score-pad-btn-muted {
+    background-color: var(--color-surface-3);
+    color: var(--color-text-muted);
+}
+
+/* Top-level "parent node" tiles (Runs / Out / Wide / No Ball / Run Out / Dot) */
+.score-page-input-box .score-pad-grid.score-pad-grid-parents {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.score-pad-btn-parent {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 18px 10px;
+    font-size: 15px;
+    border-left: 3px solid transparent;
+}
+
+.score-pad-btn-parent i { font-size: 18px; color: var(--color-text-muted); }
+
+.score-pad-btn-parent[data-parent="runs"] { border-left-color: #22c55e; }
+.score-pad-btn-parent[data-parent="runs"] i { color: #22c55e; }
+.score-pad-btn-parent[data-parent="out"] { border-left-color: #ff015e; }
+.score-pad-btn-parent[data-parent="out"] i { color: #ff015e; }
+.score-pad-btn-parent[data-parent="wide"] { border-left-color: #eab308; }
+.score-pad-btn-parent[data-parent="wide"] i { color: #eab308; }
+.score-pad-btn-parent[data-parent="noball"] { border-left-color: #f97316; }
+.score-pad-btn-parent[data-parent="noball"] i { color: #f97316; }
+.score-pad-btn-parent[data-parent="runout"] { border-left-color: #a855f7; }
+.score-pad-btn-parent[data-parent="runout"] i { color: #a855f7; }
+.score-pad-btn-parent[data-parent="dot"] { border-left-color: #6b7280; }
+.score-pad-btn-parent[data-parent="dot"] i { color: #6b7280; }
+
+/* ============================================================
+   Live score summary card
+   ============================================================ */
+.live-score-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+}
+
+.live-score-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 20px 16px;
+}
+
+.live-score-team {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.live-team-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.live-team-badge img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.live-team-badge-a { background-color: var(--color-accent); color: var(--color-text); }
+.live-team-badge-b { background-color: var(--color-accent-green); color: var(--color-surface); }
+
+.live-team-name {
+    color: var(--color-text);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.live-score-mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 74px;
+    flex-shrink: 0;
+}
+
+.live-score-value { color: var(--color-text); font-size: 20px; font-weight: 700; }
+.live-score-overs { color: var(--color-text-muted); font-size: 11px; }
+.live-score-vs { color: var(--color-text-faint); font-size: 11px; font-weight: 700; flex-shrink: 0; }
+
+.live-match-status {
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    margin: 14px 0 26px;
+}
+
+/* --- In-play summary (batters / bowler / over balls / extras / total) --- */
+.live-inplay-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border-fainter);
+}
+
+.live-batters-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+}
+
+.live-bowler-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: right;
+    align-items: flex-end;
+}
+
+.live-inplay-heading { color: var(--color-text); font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+
+.live-player-line { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.live-batters-col .live-player-line { justify-content: flex-start; }
+.live-bowler-col .live-player-line { justify-content: flex-end; }
+
+.on-strike-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: transparent;
+    flex-shrink: 0;
+}
+
+.on-strike-dot.is-active { background-color: var(--color-accent-green); }
+
+.live-player-name {
+    color: var(--color-text);
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+.live-player-name i { color: var(--color-accent-green); font-size: 11px; }
+
+.live-player-stat { color: var(--color-text-muted); font-weight: 600; }
+
+.live-over-balls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+    /* No height cap: every ball (including a full 6-ball over, which can
+       wrap onto a second row on narrow screens) stays fully visible. */
+    max-height: none;
+}
+
+.live-over-empty { color: var(--color-text-faint); font-size: 12px; font-style: italic; }
+
+.over-ball-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    background-color: var(--color-surface-5);
+    color: var(--color-text);
+    flex-shrink: 0;
+}
+
+.over-ball-boundary { background-color: var(--bg-green-chip); color: var(--color-accent-green); }
+.over-ball-wicket { background-color: var(--bg-red-chip); color: var(--color-danger); border-radius: 6px; }
+.over-ball-extra { background-color: var(--bg-blue-chip); color: var(--color-blue); border-radius: 6px; min-width: 32px; }
+
+.live-over-total {
+    width: 100%;
+    text-align: right;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.live-summary-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 10px 16px 14px;
+    margin-top: 8px;
+}
+
+/* Match/Super Over switcher — only rendered once a tie has happened.
+   Given flex-basis: 100% + the wrap above, it always takes its own full
+   line above Target/Extras/Total instead of squeezing into that row. */
+.live-chain-switcher {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 100%;
+    order: -1;
+    margin-bottom: 10px;
+}
+
+.live-chain-switcher-icon {
+    color: var(--color-accent-green);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.live-chain-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 220px;
+    background-color: var(--color-surface-3);
+    color: var(--color-text);
+    border: 1px solid var(--border-fainter);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.live-needed-row {
+    padding: 8px 16px 0;
+    margin-top: 8px;
+    color: var(--color-accent-green);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.live-footer-item { display: flex; align-items: baseline; gap: 6px; }
+.live-footer-item-right { flex-direction: row-reverse; }
+.live-footer-label { color: var(--color-text); font-size: 14px; font-weight: 700; }
+.live-footer-value { color: var(--color-text-muted); font-size: 13px; font-weight: 600; }
+
+.live-inplay-label { color: var(--color-text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.live-inplay-name { color: var(--color-text); font-weight: 700; font-size: 14px; }
+
+.live-batters-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.live-batter-chip {
+    flex: 1;
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--color-surface-3);
+    border: 1px solid var(--border-fainter);
+    border-radius: 10px;
+    padding: 8px 12px;
+}
+
+.live-batter-onstrike { border-color: var(--border-green-chip); }
+.live-batter-name { color: var(--color-text); font-size: 13px; font-weight: 600; }
+.live-batter-onstrike .live-batter-name i { color: var(--color-accent-green); font-size: 11px; margin-left: 4px; }
+.live-batter-stat { color: var(--color-text-soft); font-size: 13px; font-weight: 600; }
+
+.live-result-banner {
+    text-align: center;
+    font-weight: 600;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    background: var(--color-result-bg);
+    color: var(--color-result-text);
+}
+
+/* ============================================================
+   Scorecard tabs + tables
+   ============================================================ */
+.scorecard-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.scorecard-tab {
+    padding: 0.5rem 1.25rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background-color: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.scorecard-tab:hover { color: var(--color-text); border-color: var(--border-hover-2); }
+
+.scorecard-tab.active {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-text);
+}
+
+.scorecard-block {
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-faint);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-card);
+}
+
+.players-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+@media (max-width: 640px) {
+    .players-panel {
+        grid-template-columns: 1fr;
+    }
+}
+
+.players-panel-column {
+    background: var(--color-ink-light);
+    border: 1px solid var(--border-faint);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.players-panel-heading { color: var(--color-text); font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+
+.players-panel-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    color: var(--color-text-soft);
+    border-bottom: 1px solid var(--border-fainter);
+}
+
+.players-panel-item:last-child { border-bottom: none; }
+
+.players-panel-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background-color: var(--color-accent);
+    color: var(--color-text);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.scorecard-section-title {
+    color: var(--color-accent);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin: 4px 0 12px;
+}
+
+.scorecard-section-sub {
+    color: var(--color-text-faint);
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.scorecard-table-wrap { overflow-x: auto; margin-bottom: 16px; }
+
+.scorecard-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.scorecard-table.points-table { min-width: 660px; }
+
+.scorecard-table thead th {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    text-align: right;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-fainter);
+    white-space: nowrap;
+}
+
+.scorecard-table td {
+    color: var(--color-text);
+    font-size: 13px;
+    text-align: right;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-faint);
+    white-space: nowrap;
+}
+
+.scorecard-table tbody tr:last-child td { border-bottom: none; }
+
+.scorecard-table td.col-player,
+.scorecard-table th.col-player {
+    text-align: left;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: normal;
+}
+
+.scorecard-table td.col-player {
+    vertical-align: middle;
+}
+
+.scorecard-player-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.scorecard-row-out { opacity: 0.55; }
+.scorecard-row-bowling { background-color: var(--bg-green-tint); }
+.scorecard-strike-icon { color: var(--color-accent-green); font-size: 11px; margin-left: 4px; }
+
+.scorecard-pic-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
+
+.scorecard-pic {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background-color: var(--color-bg);
+}
+
+.scorecard-captain-badge {
+    position: absolute;
+    bottom: -3px;
+    right: -3px;
+    color: var(--color-amber);
+    background-color: var(--color-ink);
+    border-radius: 50%;
+    font-size: 9px;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.scorecard-captain-tag { color: var(--color-amber); font-weight: 700; }
+
+.scorecard-player-info { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.scorecard-player-name {
+    color: var(--color-text);
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scorecard-player-status {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scorecard-player-name i { flex-shrink: 0; }
+
+.scorecard-extras-row,
+.scorecard-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: var(--color-text-soft);
+    font-size: 13px;
+    padding: 8px 4px;
+}
+
+.scorecard-total-row {
+    color: var(--color-text);
+    font-weight: 700;
+    border-top: 1px solid var(--border-softer);
+    margin-top: 4px;
+    padding-top: 12px;
+}
+
+.scorecard-extras-detail {
+    color: var(--color-text-faint);
+    font-weight: 500;
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+/* DEBUG styles preserved from original (Players table visualisation) */
+.scorecard-innings#innings-players .scorecard-table thead th,
+.scorecard-innings#innings-players .scorecard-table td {
+    background-color: var(--bg-table-debug) !important;
+    border-color: var(--border-table-debug) !important;
+    min-width: 140px;
+    display: table-cell !important;
+}
+.scorecard-innings#innings-players .scorecard-table thead th {
+    background-color: var(--bg-table-debug-2) !important;
+}
+.scorecard-innings#innings-players .scorecard-player-info { color: var(--color-text-soft) !important; }
+
+/* ============================================================
+   Scoring toolbar + ball buttons
+   ============================================================ */
+.scoring-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 14px 0;
+}
+
+.ball-score-modal { max-width: 420px; }
+
+.ball-step-hint { color: var(--color-text-soft); font-size: 13px; margin-bottom: 12px; text-align: center; }
+
+.ball-btn-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.ball-btn {
+    background-color: var(--color-bg);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    color: var(--color-text);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 14px 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ball-btn:hover { border-color: var(--color-accent-green); }
+
+.ball-btn-boundary { border-color: var(--border-green-chip); color: var(--color-accent-green); }
+.ball-btn-special { grid-column: span 3; color: var(--color-amber); border-color: var(--bg-amber-chip); font-size: 12px; }
+.ball-btn-extra { color: var(--color-blue); border-color: var(--border-blue-chip); }
+.ball-btn-out { color: var(--color-danger); border-color: var(--border-red-chip); }
+
+.role-picked-chip { margin-top: 8px; }
+
+.picked-player-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--color-bg);
+    border: 1px solid var(--border-green-chip);
+    border-radius: 999px;
+    padding: 4px 12px 4px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.picked-player-chip img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+/* ============================================================
+   MVP tab
+   ============================================================ */
+.mvp-trophies {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.mvp-trophy-card {
+    flex: 1 1 240px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-faint);
+    border-radius: 16px;
+    padding: 14px 16px;
+}
+
+.mvp-trophy-icon { font-size: 22px; color: var(--color-amber); }
+
+.mvp-trophy-info { display: flex; flex-direction: column; }
+
+.mvp-trophy-label {
+    color: var(--color-text-faint);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.mvp-trophy-name { color: var(--color-text); font-size: 14px; font-weight: 700; }
+.mvp-trophy-team { color: var(--color-text-muted); font-weight: 500; }
+.mvp-trophy-pts { color: var(--color-accent); font-size: 12px; font-weight: 600; }
+
+.mvp-rank {
+    width: 18px;
+    color: var(--color-text-faint);
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.mvp-total { color: var(--color-accent); font-weight: 700; }
+
+/* ============================================================
+   Responsive — live/scoring
+   ============================================================ */
+@media (max-width: 480px) {
+    .live-page,
+    .score-page { padding: 10px 14px 50px; }
+
+    .score-page-input-box .score-pad-header { padding: 18px 50px; font-size: 18px; }
+    .score-page-input-box .score-pad-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 14px; max-height: 65vh; }
+    .score-page-input-box .score-pad-btn { padding: 12px 6px; font-size: 13px; min-height: 44px; }
+    .score-pad-section-label { font-size: 10px; margin-top: 4px; }
+
+    .score-page-input-box .score-pad-grid.score-pad-grid-parents { grid-template-columns: repeat(2, 1fr); }
+    .score-pad-btn-parent { padding: 20px 8px; font-size: 14px; }
+    .score-pad-btn-parent i { font-size: 19px; }
+
+    /* TCL/session stat tabs wrap and stay tappable on narrow screens */
+    .scorecard-tab {
+        padding: 0.4rem 0.9rem;
+        font-size: 0.75rem;
+        gap: 4px;
+    }
+
+/* --- Score summary header --- */
+    .live-score-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto auto 1fr;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 14px 10px;
+    }
+
+    .live-score-team {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .live-team-badge {
+        width: 36px;
+        height: 36px;
+        font-size: 12px;
+    }
+
+    .live-team-badge img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .live-team-name {
+        max-width: 90px;
+        width: 100%;
+        font-size: 11px;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: block;
+    }
+
+    .live-score-mid {
+        min-width: 0;
+        gap: 1px;
+        text-align: center;
+    }
+
+    .live-score-value { font-size: 16px; white-space: nowrap; }
+    .live-score-overs { white-space: nowrap; }
+    .live-score-vs { font-size: 10px; }
+
+    /* End/Cancel match admin buttons stack + full width */
+    .live-end-match-form { flex-direction: column; }
+    .live-end-match-form .toolbar-btn { justify-content: center; width: 100%; }
+
+    /* --- In-play summary --- */
+    .live-inplay-grid { gap: 12px; padding: 12px; }
+    .live-player-line,
+    .live-inplay-heading { font-size: 12px; }
+
+.live-summary-footer {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        align-items: center;
+        padding: 10px 12px 14px;
+    }
+
+    .live-chain-switcher {
+        grid-column: 1 / -1;
+        margin-bottom: 8px;
+    }
+
+    .live-chain-select {
+        max-width: none;
+        width: 100%;
+        font-size: 12px;
+        padding: 7px 10px;
+    }
+
+    .live-footer-item {
+        flex: 1 1 auto;
+        justify-content: center;
+        min-width: 0;
+        text-align: center;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .live-footer-item-right {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .live-footer-label { font-size: 11px; }
+    .live-footer-value { font-size: 12px; }
+
+.scorecard-table-wrap { overflow-x: auto; }
+    .scorecard-table { width: 100%; min-width: 0; table-layout: fixed; }
+    .scorecard-table td,
+    .scorecard-table thead th { font-size: 12px; padding: 6px 5px; white-space: normal; }
+
+    /* Give the player/team name column the flexible space; keep the
+       numeric stat columns compact and right-aligned so they don't
+       overflow the screen. */
+    .scorecard-table thead th.col-player,
+    .scorecard-table td.col-player { width: auto; min-width: 0; max-width: 46%; }
+    .scorecard-table thead th:not(.col-player),
+    .scorecard-table td:not(.col-player) { width: 13%; min-width: 30px; max-width: 30px; }
+
+    .scorecard-player-cell { gap: 7px; min-width: 0; }
+    .scorecard-player-cell .scorecard-pic-wrap { flex-shrink: 0; }
+    .scorecard-player-cell .scorecard-pic { width: 26px; height: 26px; flex-shrink: 0; }
+    .scorecard-player-name,
+    .scorecard-player-status { font-size: 11px; }
+
+    /* Points table (TCL) avatar column layout */
+    .points-team-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .points-team-avatar { width: 32px; height: 32px; flex-shrink: 0; }
+    .points-team-name { max-width: 110px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .points-team-name a { color: inherit; text-decoration: none; cursor: text; font-weight: 600; }
+    .points-team-name a:hover { text-decoration: none; }
+
+    .scoring-toolbar { gap: 8px; }
+    .ball-btn { font-size: 13px; padding: 12px 6px; }
+}
+
+/* Very small phones: keep the in-play grid from overflow/collapse */
+@media (max-width: 360px) {
+    .live-team-name { max-width: 70px; font-size: 10px; }
+    .live-score-mid { min-width: 48px; }
+    .live-score-value { font-size: 14px; }
+    .live-score-vs { font-size: 9px; }
+    .live-inplay-grid { grid-template-columns: 1fr; text-align: left; }
+    .live-bowler-col { text-align: left; align-items: flex-start; }
+    .live-bowler-col .live-player-line,
+    .live-over-balls { justify-content: flex-start; }
+}

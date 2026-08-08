@@ -1,0 +1,27 @@
+/* ============================================================
+   tcl.css — tournament (TCL) theme overrides
+   ============================================================ */
+
+.tcl-theme .resume-match-icon,
+.tcl-theme .fixture-card-folder-icon,
+.tcl-theme .scorecard-section-title,
+.tcl-theme .mvp-total,
+.tcl-theme .tcl-match-card-status.is-live,
+.tcl-theme .picker-check-icon {
+    color: var(--color-amber-alt);
+}
+
+.tcl-theme .toolbar-btn-primary,
+.tcl-theme .scorecard-tab.active {
+    background-color: var(--color-amber-alt);
+    border-color: var(--color-amber-alt);
+}
+
+.tcl-theme .picker-player-card.picker-selected {
+    border-color: var(--color-amber-alt);
+}
+
+.tcl-theme .resume-live-badge {
+    background: var(--color-amber-bright);
+    color: var(--color-ink-deep);
+}

@@ -1,0 +1,671 @@
+/* ============================================================
+   players.css — players page, cards, forms, profile, stat blocks,
+   points-table team cells
+   ============================================================ */
+
+.players-page {
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 10px 20px 60px;
+    box-sizing: border-box;
+}
+
+.players-toolbar {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+/* --- Shared toolbar button (also used across live/scoring/tcl) --- */
+.toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background-color: var(--color-surface);
+    color: var(--color-text-soft);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.toolbar-btn:hover {
+    background-color: var(--hover-subtle);
+    color: var(--color-text);
+}
+
+.toolbar-btn-primary {
+    background-color: var(--color-accent-green);
+    border-color: var(--color-accent-green);
+    color: var(--color-surface);
+}
+
+.toolbar-btn-primary:hover {
+    background-color: var(--color-accent-green-dark);
+    color: var(--color-surface);
+}
+
+.toolbar-btn-danger {
+    background-color: var(--color-danger);
+    color: var(--color-text);
+    border-color: var(--color-danger);
+}
+
+.toolbar-btn-danger:hover {
+    background-color: var(--color-danger-dark);
+}
+
+/* --- Player grid + cards --- */
+.players-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.player-card {
+    width: 100%;
+    max-width: 500px;
+    height: 84px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background-color: var(--color-surface);
+    border-radius: 16px;
+    padding: 12px 18px;
+    box-shadow: var(--shadow-card);
+    box-sizing: border-box;
+    position: relative;
+}
+
+.player-pic {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background-color: var(--color-bg);
+}
+
+.player-card-link {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+    min-width: 0;
+    text-decoration: none;
+    color: inherit;
+}
+
+.player-name {
+    color: var(--color-text);
+    font-size: 16px;
+    font-weight: 600;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+.no-players {
+    color: var(--color-text-muted);
+    text-align: center;
+    margin-top: 40px;
+}
+
+.player-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.player-meta {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.player-menu {
+    margin-left: auto;
+}
+
+.menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-text-muted);
+    font-size: 16px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.menu-btn:hover {
+    background-color: var(--hover-subtle);
+    color: var(--color-text);
+}
+
+.player-dropdown {
+    background-color: var(--color-bg);
+    border: 1px solid var(--border-softer);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 130px;
+    left: auto;
+    right: 0;
+    max-width: calc(100vw - 32px);
+}
+
+.player-dropdown .dropdown-item {
+    color: var(--color-text-soft);
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+}
+
+.player-dropdown .dropdown-item:hover {
+    background-color: var(--hover-subtle);
+    color: var(--color-text);
+}
+
+.player-dropdown li form { margin: 0; }
+
+.player-dropdown .delete-item { color: var(--color-danger); }
+
+.player-dropdown .delete-item:hover {
+    background-color: var(--bg-red-soft);
+    color: var(--color-danger);
+}
+
+/* --- Add/Edit player form --- */
+.add-player-form-wrapper {
+    max-width: 420px;
+    margin: 20px auto 0;
+    background-color: var(--color-surface);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--shadow-card);
+}
+
+.add-player-title {
+    color: var(--color-text);
+    font-size: 20px;
+    margin-bottom: 20px;
+}
+
+.add-player-form .form-group {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.add-player-form label {
+    color: var(--color-text-soft);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.add-player-form input,
+.add-player-form select {
+    background-color: var(--color-bg);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--color-text);
+    font-size: 14px;
+    outline: none;
+}
+
+.add-player-form input:focus,
+.add-player-form select:focus {
+    border-color: var(--color-accent-green);
+}
+
+.add-player-form input[type="file"] {
+    background-color: var(--color-bg);
+    border: 1px dashed var(--border-file);
+    padding: 10px;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.form-hint { color: var(--color-text-faint); font-size: 11px; }
+
+.current-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 6px;
+}
+
+.form-error {
+    background-color: var(--bg-red-soft);
+    border: 1px solid var(--border-red-soft);
+    color: var(--color-danger);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+/* --- Filter dropdown (kept for completeness) --- */
+.filter-dropdown {
+    background-color: var(--color-bg);
+    border: 1px solid var(--border-softer);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 140px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.filter-dropdown .filter-option {
+    color: var(--color-text-soft);
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+}
+
+.filter-dropdown .filter-option:hover {
+    background-color: var(--hover-subtle);
+    color: var(--color-text);
+}
+
+.filter-dropdown .filter-option.active {
+    background-color: var(--color-accent-green);
+    color: var(--color-surface);
+}
+
+.filter-dropdown::-webkit-scrollbar { width: 6px; }
+.filter-dropdown::-webkit-scrollbar-thumb { background-color: var(--hover-subtle-3); border-radius: 10px; }
+.filter-dropdown::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   Player Profile Page
+   ============================================================ */
+.profile-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 16px 60px;
+    color: var(--color-text);
+}
+
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 4px 24px;
+}
+
+.profile-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 15px;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+}
+
+.profile-back-btn:hover { background-color: var(--hover-subtle-2); }
+
+.profile-header-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin: 0;
+    color: var(--color-text);
+}
+
+.profile-pic-section {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 36px;
+}
+
+.profile-pic {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-profile);
+}
+
+.profile-pic-ring,
+.player-pic-ring {
+    position: relative;
+    display: inline-flex;
+}
+
+.profile-pic-ring { width: 150px; height: 150px; }
+.player-pic-ring { width: 56px; height: 56px; flex-shrink: 0; }
+
+.profile-pic-ring::before,
+.player-pic-ring::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    padding: 3px;
+    background: conic-gradient(var(--color-gold), var(--color-gold-deep), var(--color-gold), var(--color-gold-deep), var(--color-gold));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    z-index: 0;
+    filter: var(--ring-gold-shadow);
+}
+
+.player-pic-ring::before {
+    inset: -4px;
+    padding: 2px;
+    filter: var(--ring-gold-shadow-small);
+}
+
+.profile-pic-ring::before { animation: ringSpin 5s linear infinite; }
+.player-pic-ring::before { animation: ringPop 0.5s ease-out forwards, ringSpin 6s linear infinite 0.5s; }
+
+.profile-pic-ring .profile-pic,
+.player-pic-ring .player-pic { position: relative; z-index: 1; }
+
+@keyframes ringSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes ringPop {
+    from { transform: scale(0.3) rotate(-90deg); opacity: 0; }
+    to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.profile-rank-badge {
+    position: absolute;
+    bottom: -1px;
+    left: 51%;
+    transform: translate(-50%, 50%);
+    z-index: 2;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--color-success);
+    border: 2px solid var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text);
+    box-shadow: var(--rank-green-shadow);
+}
+
+.player-rank-badge {
+    position: absolute;
+    bottom: -1px;
+    left: 51%;
+    transform: translate(-50%, 50%);
+    z-index: 2;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: var(--color-success);
+    border: 1px solid var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--color-text);
+    box-shadow: var(--rank-green-shadow-small);
+}
+
+.profile-name-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-top: -18px;
+    margin-bottom: 24px;
+}
+
+.profile-name { font-size: 20px; font-weight: 700; }
+.profile-meta { font-size: 13px; color: var(--color-text-muted); }
+
+.profile-edit-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+}
+
+.profile-edit-link:hover { background-color: var(--hover-subtle-2); }
+
+/* --- Profile stats tabs --- */
+.stats-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.stats-tab {
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-soft);
+    color: var(--color-text-muted);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 10px 32px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.stats-tab:hover { color: var(--color-text); }
+
+.stats-tab.active {
+    background-color: var(--color-accent-green);
+    border-color: var(--color-accent-green);
+    color: var(--color-surface);
+}
+
+.stats-columns { margin-top: 20px; }
+.stats-column { display: none; padding: 0 4px 10px; }
+.stats-column.active-panel { display: block; }
+
+.stats-section { margin-top: 20px; }
+.stats-section + .stats-section { margin-top: 28px; }
+
+.stats-section-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin: 0 0 16px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 10px;
+    row-gap: 14px;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.stat-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: var(--color-text);
+}
+
+.stat-value { font-size: 14px; color: var(--color-text-soft); font-weight: 500; }
+
+/* --- Stats edit form (kept for completeness) --- */
+.stats-edit-toggle {
+    background-color: var(--color-surface);
+    border: 1px solid var(--border-soft);
+    color: var(--color-text);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    margin-bottom: 12px;
+}
+
+.stats-edit-block {
+    margin-bottom: 20px;
+    border: 1px solid var(--border-softer);
+    border-radius: 12px;
+    padding: 16px;
+    background-color: var(--color-surface-4);
+}
+
+.stats-edit-block h3 { color: var(--color-text); font-size: 16px; margin: 0 0 4px; }
+.stats-edit-block h4 { color: var(--color-text-soft); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin: 16px 0 10px; }
+
+.stats-edit-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.stats-edit-grid .form-group { margin-bottom: 0; }
+.stats-edit-grid label { font-size: 11px; }
+.stats-edit-grid input { padding: 8px 10px; font-size: 13px; }
+
+/* ============================================================
+   Points-table team cells (avatar + name)
+   ============================================================ */
+.points-team-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.points-team-avatar { width: 40px; height: 40px; flex-shrink: 0; }
+
+.points-team-logo {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.points-team-name {
+    max-width: 190px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.points-team-name a { color: inherit; text-decoration: none; }
+.points-team-name a:hover { text-decoration: underline; }
+
+/* ============================================================
+   Responsive — players/forms/profile
+   ============================================================ */
+@media (max-width: 768px) {
+    .players-page { padding: 10px 14px 40px; }
+    .players-toolbar { gap: 8px; }
+    .toolbar-btn { padding: 8px 14px; font-size: 13px; }
+    .player-card { max-width: 100%; padding: 10px 14px; gap: 12px; }
+    .player-pic,
+    .player-pic-ring { width: 48px; height: 48px; }
+    .player-name { font-size: 15px; }
+    .add-player-form-wrapper { max-width: 100%; margin: 12px 10px 0; padding: 18px; }
+
+    .stats-columns { grid-template-columns: 1fr; }
+    .stats-column + .stats-column {
+        border-left: none;
+        border-top: 2px solid rgba(255, 255, 255, 0.9);
+        margin-top: 20px;
+        padding-top: 4px;
+    }
+    .stats-edit-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+    .players-toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar-btn { justify-content: center; width: 100%; }
+    .player-card { padding: 10px; gap: 10px; }
+    .player-info { min-width: 0; }
+    .player-name,
+    .player-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .filter-dropdown,
+    .player-dropdown { min-width: 120px; }
+
+    .stats-grid { column-gap: 8px; row-gap: 10px; }
+    .stat-label { font-size: 10px; }
+    .stat-value { font-size: 13px; }
+}
+
+@media (min-width: 1200px) {
+    .players-page { max-width: 1000px; }
+}
+.add-player-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.add-player-header .add-player-title {
+    margin: 0;
+}
+This reuses the exact same round 38x38 icon button already proven on the profile page, just links back to /players (same destination as the existing bottom "Cancel" button — that one's untouched, this just adds a quicker top-of-form close option). No fixed widths or layout changes elsewhere, so it won't affect responsiveness.
+
+
