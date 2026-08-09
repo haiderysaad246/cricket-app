@@ -52,6 +52,21 @@
   margin: auto;
 }
 
+/* On small screens, let the overlay scroll from the top instead of forcing
+   vertical centering — centering a tall form against a short viewport is
+   what was clipping/squashing it into a "square" box. */
+@media (max-width: 480px) {
+  .confirm-overlay-visible {
+    align-items: flex-start !important;
+    padding: 16px 12px;
+  }
+  .confirm-overlay-visible .confirm-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+  }
+}
+
 /* ---- Stats tab underline transition ---- */
 .stats-tab { transition: color 0.15s ease, background-color 0.15s ease; }
 
