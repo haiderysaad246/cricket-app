@@ -137,6 +137,61 @@ a[href="/auction"].active .nav-label {
     margin-bottom: 24px;
 }
 
+.players-search {
+    position: relative;
+    max-width: 500px;
+    width: 100%;
+    margin: 0 auto 24px;
+    display: flex;
+    align-items: center;
+}
+
+.players-search-icon {
+    position: absolute;
+    left: 14px;
+    color: #9ca3af;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+.players-search-input {
+    width: 100%;
+    background-color: #1f1f1f;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 11px 40px 11px 38px;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.players-search-input:focus {
+    border-color: #4ADE80;
+}
+
+.players-search-input::placeholder {
+    color: #6b7280;
+}
+
+.players-search-clear {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    color: #9ca3af;
+    font-size: 14px;
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.players-search-clear:hover {
+    color: #ffffff;
+}
+
 .resume-match-card {
     display: flex;
     align-items: center;
@@ -519,6 +574,16 @@ a[href="/auction"].active .nav-label {
 
     .players-toolbar {
         gap: 8px;
+    }
+
+    .players-search {
+        max-width: 100%;
+        margin-bottom: 18px;
+    }
+
+    .players-search-input {
+        font-size: 13px;
+        padding: 10px 36px 10px 34px;
     }
 
     .toolbar-btn {
