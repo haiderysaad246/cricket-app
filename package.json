@@ -1,24 +1,20 @@
 {
-  "name": "cricket",
+  "name": "cricket-client",
+  "private": true,
   "version": "1.0.0",
-  "description": "",
-  "main": "app.js",
+  "type": "module",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js",
-    "seed": "node seed/seed.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "cloudinary": "^2.5.1",
-    "dotenv": "^16.6.1",
-    "ejs": "^6.0.1",
-    "express": "^5.2.1",
-    "mongoose": "^9.8.0",
-    "multer": "^2.2.0"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
   }
 }
