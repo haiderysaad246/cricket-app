@@ -214,9 +214,11 @@
 
     <script>
         window.MATCH = <%- JSON.stringify(match) %>;
+        window.IS_ADMIN = <%- isAdmin ? 'true' : 'false' %>;
     </script>
     <%- include('../includes/scripts.ejs') %>
     <script src="/js/live.js"></script>
     <script src="/js/mvp.js"></script>
+    <script src="/js/live-auto-refresh.js"></script>
 </body>
 </html>
