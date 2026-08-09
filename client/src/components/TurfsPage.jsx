@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api";
 
 export default function TurfsPage() {
@@ -73,7 +74,7 @@ export default function TurfsPage() {
         </div>
       )}
 
-      {showCreate && (
+      {showCreate && createPortal(
         <div className="confirm-overlay confirm-overlay-visible" onClick={(e) => e.target === e.currentTarget && setShowCreate(false)}>
           <div className="confirm-modal turf-form-modal">
             <h2 className="add-player-title">Create Turf</h2>
@@ -104,7 +105,8 @@ export default function TurfsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

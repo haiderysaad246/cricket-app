@@ -1,6 +1,8 @@
+import { createPortal } from "react-dom";
+
 export default function ConfirmModal({ open, title, message, confirmLabel, icon, onCancel, onConfirm, busy }) {
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="confirm-overlay confirm-overlay-visible" onClick={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="confirm-modal">
         <h2 className="add-player-title">{title}</h2>
@@ -13,6 +15,7 @@ export default function ConfirmModal({ open, title, message, confirmLabel, icon,
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
