@@ -32,6 +32,7 @@ const bowlingStatsSchema = new Schema({
     economyRate: { type: Number, default: 0 },
     strikeRate: { type: Number, default: 0 },
     maidens: { type: Number, default: 0 },
+    hatTricks: { type: Number, default: 0 },
 }, { _id: false });
 
 // A full stat block (batting + bowling) for one context — Turf (normal

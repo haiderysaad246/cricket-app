@@ -479,6 +479,7 @@ async function applyTeamStats(match, team, statsKey) {
         bw.dots += row.dots || 0;
         bw.runsConceded += row.runs || 0;
         bw.maidens += row.maidens || 0;
+        bw.hatTricks += row.hatTrick ? 1 : 0;
         bw.overs = Math.floor(bw.ballsBowled / 6);
         bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
         bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
@@ -654,6 +655,7 @@ exports.recordBall = async (req, res) => {
             team.nonStrikerId = s;
         };
         let isLegalBall = false;
+        let bowlerCreditedWicket = false;
         // Normal legal deliveries: dot/1/2/3/4/6, plus our turf-only
         // "1 run, no rotation" rule for balls that go out through the open nets.
 const runValues = { dot: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, one_nr: 1 };
@@ -780,7 +782,7 @@ if (runs % 2 === 1) rotateStrike();
                     bowler.balls += 1;
                     team.currentOverBalls.push("W");
                 }
-                if (outType !== "obstructing") bowler.wickets += 1;
+                if (outType !== "obstructing") { bowler.wickets += 1; bowlerCreditedWicket = true; }
                 let dismissalText = "";
                 if (outType === "catch") {
                     const fielderRow = req.body.fielderId ? findRow(team.bowling, req.body.fielderId) : null;
@@ -802,6 +804,14 @@ if (runs % 2 === 1) rotateStrike();
             if (newRow && newRow.status === "yet_to_bat") { newRow.status = "batting"; stampBattingOrder(newRow, team); }
         } else {
             return res.status(400).json({ error: "invalid_ball_type" });
+        }
+        if (isLegalBall) {
+            if (bowlerCreditedWicket) {
+                bowler.wicketStreak = (bowler.wicketStreak || 0) + 1;
+                if (bowler.wicketStreak >= 3) bowler.hatTrick = true;
+            } else {
+                bowler.wicketStreak = 0;
+            }
         }
         if (isLegalBall && team.legalBalls % 6 === 0) {
             if (team.currentOverRuns === 0) {
@@ -839,7 +849,7 @@ async function aggregateTurfStats(turfId) {
 acc.set(key, {
                 battedMatches: 0, battingInnings: 0, runs: 0, ballsFaced: 0, dots: 0,
                 fours: 0, sixes: 0, ducks: 0, highest: 0, timesOut: 0,
-                bowlingInnings: 0, wickets: 0, ballsBowled: 0, bowlingDots: 0, runsConceded: 0, maidens: 0,
+                bowlingInnings: 0, wickets: 0, ballsBowled: 0, bowlingDots: 0, runsConceded: 0, maidens: 0, hatTricks: 0,
             });
         }
         return acc.get(key);
@@ -873,6 +883,7 @@ acc.set(key, {
                 a.bowlingDots += row.dots || 0;
                 a.runsConceded += row.runs;
                 a.maidens += row.maidens || 0;
+                a.hatTricks += row.hatTrick ? 1 : 0;
             });
         });
     });
@@ -900,6 +911,7 @@ acc.set(key, {
         bw.dots += a.bowlingDots;
         bw.runsConceded += a.runsConceded;
         bw.maidens += a.maidens || 0;
+        bw.hatTricks += a.hatTricks || 0;
         bw.overs = Math.floor(bw.ballsBowled / 6);
         bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
         bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;

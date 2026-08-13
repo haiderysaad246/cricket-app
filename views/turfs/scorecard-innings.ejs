@@ -96,7 +96,7 @@
                                 <% } %>
                             </span>
                             <div class="scorecard-player-info">
-                                <span class="scorecard-player-name"><%= player.name %><% if (player.isCaptain) { %> <span class="scorecard-captain-tag">(C)</span><% } %></span>
+                                <span class="scorecard-player-name"><%= player.name %><% if (player.isCaptain) { %> <span class="scorecard-captain-tag">(C)</span><% } %><% if (player.hatTrick) { %> <i class="fa-solid fa-hat-wizard scorecard-hattrick-badge" title="Hat-trick"></i><% } %></span>
                             </div>
                             </div>
                         </td>

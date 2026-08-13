@@ -2219,6 +2219,11 @@ a[href="/auction"].active .nav-label {
     font-weight: 700;
 }
 
+.scorecard-hattrick-badge {
+    color: #f97316;
+    font-size: 11px;
+}
+
 .scorecard-player-info {
     display: flex;
     flex-direction: column;

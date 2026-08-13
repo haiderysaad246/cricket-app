@@ -41,6 +41,7 @@ const zeroBowling = {
     economyRate: 0,
     strikeRate: 0,
     maidens: 0,
+    hatTricks: 0,
 };
 
 async function main() {

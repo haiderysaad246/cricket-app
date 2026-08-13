@@ -26,6 +26,8 @@ const bowlingRowSchema = new Schema({
     maidens: { type: Number, default: 0 },
     runs: { type: Number, default: 0 },
     wickets: { type: Number, default: 0 },
+    wicketStreak: { type: Number, default: 0 },
+    hatTrick: { type: Boolean, default: false },
 }, { _id: false });
 
 const teamStateSchema = new Schema({
