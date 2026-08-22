@@ -3176,26 +3176,3 @@ a[href="/auction"].active .nav-label {
     background: #f59e0b; /* amber for tournament theme */
     color: #111827;
 }
-
-.live-team-captain {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 4px;
-}
-
-.live-team-captain-pic {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.live-team-captain-name {
-    font-size: 11px;
-    color: #9ca3af;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 90px;
-}
