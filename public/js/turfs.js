@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelPicker = document.getElementById('cancelPicker');
     const donePicker = document.getElementById('donePicker');
     const pickerCards = Array.from(document.querySelectorAll('.picker-player-card'));
+    const pickerSearchInput = document.getElementById('pickerSearchInput');
 
     // Committed selections per team: Map<playerId, { id, name, image }>
     const selections = { team1: new Map(), team2: new Map() };
@@ -91,10 +92,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const teamNameInput = document.getElementById(currentTeam + 'Name');
             pickerTitle.textContent = 'Select Players' + (teamNameInput && teamNameInput.value ? ' — ' + teamNameInput.value : '');
 
+            if (pickerSearchInput) pickerSearchInput.value = '';
             renderPickerGrid();
+            filterPickerCards('');
             playerPickerOverlay.style.display = 'flex';
         });
     });
+
+    function filterPickerCards(query) {
+        const q = query.trim().toLowerCase();
+        pickerCards.forEach((card) => {
+            const name = (card.dataset.name || '').toLowerCase();
+            card.style.display = !q || name.includes(q) ? '' : 'none';
+        });
+    }
+
+    if (pickerSearchInput) {
+        pickerSearchInput.addEventListener('input', () => filterPickerCards(pickerSearchInput.value));
+    }
 
     function renderPickerGrid() {
         const lockedByOtherTeam = selections[otherTeamOf(currentTeam)];

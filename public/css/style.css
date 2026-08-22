@@ -3176,3 +3176,19 @@ a[href="/auction"].active .nav-label {
     background: #f59e0b; /* amber for tournament theme */
     color: #111827;
 }
+
+.picker-search-input {
+    width: 100%;
+    padding: 10px 14px;
+    margin: 8px 0 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background-color: #0e0e0e;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+.picker-search-input:focus {
+    outline: none;
+    border-color: #ff015e;
+}
