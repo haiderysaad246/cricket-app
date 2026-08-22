@@ -42,6 +42,12 @@
                 <img src="<%= leftTeamLogo || '/images/placeholder-player.svg' %>" alt="<%= leftTeam.name %>" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
             </div>
             <div class="live-team-name"><%= leftTeam.name %></div>
+            <% if (leftTeam.captainName) { %>
+                <div class="live-team-captain">
+                    <img src="<%= leftTeam.captainImage || '/images/placeholder-player.svg' %>" alt="<%= leftTeam.captainName %>" class="live-team-captain-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                    <span class="live-team-captain-name"><%= leftTeam.captainName %> <span class="scorecard-captain-tag">(C)</span></span>
+                </div>
+            <% } %>
         </div>
 
         <div class="live-score-mid">
@@ -61,6 +67,12 @@
                 <img src="<%= rightTeamLogo || '/images/placeholder-player.svg' %>" alt="<%= rightTeam.name %>" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
             </div>
             <div class="live-team-name"><%= rightTeam.name %></div>
+            <% if (rightTeam.captainName) { %>
+                <div class="live-team-captain">
+                    <img src="<%= rightTeam.captainImage || '/images/placeholder-player.svg' %>" alt="<%= rightTeam.captainName %>" class="live-team-captain-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                    <span class="live-team-captain-name"><%= rightTeam.captainName %> <span class="scorecard-captain-tag">(C)</span></span>
+                </div>
+            <% } %>
         </div>
     </div>
 
