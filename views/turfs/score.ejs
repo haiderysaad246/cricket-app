@@ -18,7 +18,9 @@
                 <i class="fa-solid fa-flag-checkered"></i>
                 <span>End Innings</span>
             </button>
-            <%- include('./includes/live-score-summary.ejs', { match }) %>
+            <div id="liveScoreSummaryWrapper">
+                <%- include('./includes/live-score-summary.ejs', { match }) %>
+            </div>
         </div>
 
         <!-- Input box: header shows a live preview of the current selection,

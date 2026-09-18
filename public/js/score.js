@@ -1,8 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const match = window.MATCH;
+    let match = window.MATCH;
     if (!match) return; // not on the score page
     const matchId = match._id;
-    const team = match[match.currentInnings];
+    let team = match[match.currentInnings];
+    let isSubmitting = false;
 
     async function postJson(url, body) {
         const res = await fetch(url, {
@@ -18,8 +19,185 @@ document.addEventListener('DOMContentLoaded', () => {
         return data;
     }
 
-    function refresh() {
-        window.location.reload();
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // Preserve populated logo objects if the server returns raw ObjectIds
+    function preserveTeamLogos(newMatch, oldMatch) {
+        if (!newMatch) return;
+        const t1Logo = (newMatch.team1TeamId && typeof newMatch.team1TeamId === 'object' && newMatch.team1TeamId.logo)
+            || (oldMatch && oldMatch.team1TeamId && typeof oldMatch.team1TeamId === 'object' && oldMatch.team1TeamId.logo)
+            || null;
+        const t2Logo = (newMatch.team2TeamId && typeof newMatch.team2TeamId === 'object' && newMatch.team2TeamId.logo)
+            || (oldMatch && oldMatch.team2TeamId && typeof oldMatch.team2TeamId === 'object' && oldMatch.team2TeamId.logo)
+            || null;
+        if (t1Logo) newMatch.team1TeamId = { logo: t1Logo };
+        if (t2Logo) newMatch.team2TeamId = { logo: t2Logo };
+    }
+
+    function renderLiveScoreSummary(m) {
+        const oversDisplayTop = (balls) => Math.floor((balls || 0) / 6) + '.' + ((balls || 0) % 6);
+        const leftKey = m.currentInnings;
+        const rightKey = leftKey === 'team1' ? 'team2' : 'team1';
+        const leftTeam = m[leftKey] || {};
+        const rightTeam = m[rightKey] || {};
+        const leftTeamLogo = (leftKey === 'team1' ? m.team1TeamId : m.team2TeamId)?.logo || '/images/placeholder-player.svg';
+        const rightTeamLogo = (rightKey === 'team1' ? m.team1TeamId : m.team2TeamId)?.logo || '/images/placeholder-player.svg';
+        const rightTeamDone = rightKey === m.battingFirst && m.currentInnings !== m.battingFirst;
+
+        const liveTeam = m[m.currentInnings] || {};
+        const liveStriker = (liveTeam.batting || []).find((p) => String(p.id) === String(liveTeam.strikerId));
+        const liveNonStriker = (liveTeam.batting || []).find((p) => String(p.id) === String(liveTeam.nonStrikerId));
+        const liveBowler = (liveTeam.bowling || []).find((p) => String(p.id) === String(liveTeam.currentBowlerId));
+        const liveExtras = (liveTeam.extraWides || 0) + (liveTeam.extraNoBalls || 0);
+        const liveSecondKey = m.battingFirst === 'team1' ? 'team2' : 'team1';
+        const liveTarget = m.currentInnings === liveSecondKey ? ((m[m.battingFirst]?.totalRuns || 0) + 1) : null;
+
+        const ballChipClass = (b) => {
+            if (b === 'W' || b.endsWith('W')) return 'over-ball-wicket';
+            if (b.startsWith('wd') || b.startsWith('nb')) return 'over-ball-extra';
+            if (b === '4' || b === '6') return 'over-ball-boundary';
+            return 'over-ball-normal';
+        };
+        const ballRuns = (b) => {
+            if (b === 'W') return 0;
+            const runoutMatch = b.match(/^(\d+)W$/);
+            if (runoutMatch) return Number(runoutMatch[1]);
+            if (b.startsWith('wd')) { const matchWd = b.match(/^wd\+(\d+)/); return 1 + (matchWd ? Number(matchWd[1]) : 0); }
+            if (b.startsWith('nb')) { const matchNb = b.match(/^nb\+(\d+)/); return 1 + (matchNb ? Number(matchNb[1]) : 0); }
+            const n = Number(b);
+            return isNaN(n) ? 0 : n;
+        };
+        const liveOverRuns = (liveTeam.currentOverBalls || []).reduce((sum, b) => sum + ballRuns(b), 0);
+
+        let inplayHtml = '';
+        if (liveBowler || liveStriker || liveNonStriker) {
+            const battingIds = (liveTeam.batting || []).map((p) => String(p.id));
+            const activeBatters = [liveStriker, liveNonStriker]
+                .filter(Boolean)
+                .sort((a, b) => battingIds.indexOf(String(a.id)) - battingIds.indexOf(String(b.id)));
+
+            const battersHtml = activeBatters.map((batter) => {
+                const isOnStrike = String(batter.id) === String(liveTeam.strikerId);
+                return `
+                    <div class="live-player-line">
+                        <span class="on-strike-dot${isOnStrike ? ' is-active' : ''}"></span>
+                        <span class="live-player-name">${escapeHtml(batter.name)} <i class="fa-solid fa-cricket-bat-ball" style="${isOnStrike ? '' : 'visibility:hidden;'}"></i></span>
+                        <span class="live-player-stat">${batter.runs || 0}/${batter.balls || 0}</span>
+                    </div>
+                `;
+            }).join('');
+
+            const bowlerHtml = liveBowler ? `
+                <div class="live-player-line">
+                    <span class="live-player-name">${escapeHtml(liveBowler.name)}</span>
+                    <span class="live-player-stat">${liveBowler.wickets || 0}/${liveBowler.balls || 0}</span>
+                </div>
+            ` : '';
+
+            const overBallsHtml = (liveTeam.currentOverBalls || []).map((b) => `
+                <span class="over-ball-chip ${ballChipClass(b)}">${escapeHtml(b)}</span>
+            `).join('');
+
+            const overEmptyHtml = !(liveTeam.currentOverBalls || []).length ? `
+                <span class="live-over-empty">Over not started</span>
+            ` : '';
+
+            const overTotalHtml = (liveTeam.currentOverBalls || []).length ? `
+                <div class="live-over-total">This over: ${liveOverRuns} run${liveOverRuns === 1 ? '' : 's'}</div>
+            ` : '';
+
+            let targetNeededHtml = '';
+            if (liveTarget !== null && !m.result) {
+                const liveRunsNeeded = Math.max(liveTarget - (liveTeam.totalRuns || 0), 0);
+                const liveBallsLeft = Math.max((m.overs * 6) - (liveTeam.legalBalls || 0), 0);
+                targetNeededHtml = `<div class="live-needed-row">Need ${liveRunsNeeded} runs in ${liveBallsLeft} balls</div>`;
+            }
+
+            inplayHtml = `
+                <div class="live-inplay-grid">
+                    <div class="live-batters-col">
+                        <div class="live-inplay-heading">Batters</div>
+                        ${battersHtml}
+                    </div>
+
+                    <div class="live-bowler-col">
+                        <div class="live-inplay-heading">Bowler</div>
+                        ${bowlerHtml}
+                        <div class="live-over-balls">
+                            ${overBallsHtml}
+                            ${overEmptyHtml}
+                        </div>
+                        ${overTotalHtml}
+                    </div>
+                </div>
+
+                ${targetNeededHtml}
+
+                <div class="live-summary-footer">
+                    ${liveTarget !== null ? `
+                        <div class="live-footer-item">
+                            <span class="live-footer-label">Target</span>
+                            <span class="live-footer-value">${liveTarget}</span>
+                        </div>
+                    ` : ''}
+                    <div class="live-footer-item">
+                        <span class="live-footer-label">Extras</span>
+                        <span class="live-footer-value">${liveExtras} <span class="scorecard-extras-detail">(W ${liveTeam.extraWides || 0}, NB ${liveTeam.extraNoBalls || 0}) = ${liveExtras}</span></span>
+                    </div>
+                    <div class="live-footer-item live-footer-item-right">
+                        <span class="live-footer-label">Total</span>
+                        <span class="live-footer-value">${liveTeam.totalRuns || 0}/${liveTeam.wickets || 0}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        const resultBannerHtml = m.result ? `
+            <div class="live-result-banner">${escapeHtml(m.result)}</div>
+        ` : '';
+
+        return `
+            <div class="live-score-card">
+                ${resultBannerHtml}
+                <div class="live-score-row">
+                    <div class="live-score-team">
+                        <div class="live-team-badge live-team-badge-a">
+                            <img src="${escapeHtml(leftTeamLogo)}" alt="${escapeHtml(leftTeam.name || '')}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                        </div>
+                        <div class="live-team-name">${escapeHtml(leftTeam.name || '')}</div>
+                    </div>
+
+                    <div class="live-score-mid">
+                        <div class="live-score-value">${leftTeam.totalRuns || 0}/${leftTeam.wickets || 0}</div>
+                        <div class="live-score-overs">(${oversDisplayTop(leftTeam.legalBalls || 0)} ov)</div>
+                    </div>
+
+                    <div class="live-score-vs">VS</div>
+
+                    <div class="live-score-mid ${rightTeamDone ? 'live-innings-done' : ''}">
+                        <div class="live-score-value">${rightTeam.totalRuns || 0}/${rightTeam.wickets || 0}</div>
+                        <div class="live-score-overs">(${oversDisplayTop(rightTeam.legalBalls || 0)} ov)</div>
+                    </div>
+
+                    <div class="live-score-team ${rightTeamDone ? 'live-innings-done' : ''}">
+                        <div class="live-team-badge live-team-badge-b">
+                            <img src="${escapeHtml(rightTeamLogo)}" alt="${escapeHtml(rightTeam.name || '')}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                        </div>
+                        <div class="live-team-name">${escapeHtml(rightTeam.name || '')}</div>
+                    </div>
+                </div>
+
+                ${inplayHtml}
+            </div>
+        `;
     }
 
     // When a match auto-completes (maybeDeclareResult flips status to
@@ -40,6 +218,58 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
     }
 
+    function isInningsOver(t) {
+        if (!t) return false;
+        const wicketCap = match.isSuperOver ? 2 : (t.batting ? t.batting.length - 1 : 10);
+        return t.legalBalls >= match.overs * 6 || t.wickets >= wicketCap || !!t.endedEarly;
+    }
+
+    function updateUndoBtn() {
+        const undoCount = (match.lastBallSnapshots || []).length;
+        scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
+        scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
+        scorePadUndoBtn.disabled = false;
+    }
+
+    function checkOverAndPromptBowler() {
+        if (!team) return;
+        const storageKey = 'bowlerPrompted_' + matchId + '_' + match.currentInnings;
+        if (team.legalBalls > 0 && team.legalBalls % 6 === 0 && !isInningsOver(team)) {
+            const lastPromptedBalls = sessionStorage.getItem(storageKey);
+            if (String(team.legalBalls) !== lastPromptedBalls) {
+                sessionStorage.setItem(storageKey, String(team.legalBalls));
+                promptNextBowler();
+            }
+        } else {
+            sessionStorage.removeItem(storageKey);
+        }
+    }
+
+    function handleMatchUpdate(updatedMatch) {
+        if (!updatedMatch) return;
+        if (redirectToSessionIfDone(updatedMatch)) return;
+
+        preserveTeamLogos(updatedMatch, match);
+        match = updatedMatch;
+        window.MATCH = match;
+        team = match[match.currentInnings];
+
+        const isSetUp = !!(team && team.strikerId && team.nonStrikerId && team.currentBowlerId && team.keeperId);
+        if (!isSetUp || isInningsOver(team)) {
+            window.location.href = `/turfs/live/${matchId}`;
+            return;
+        }
+
+        const wrapper = document.getElementById('liveScoreSummaryWrapper');
+        if (wrapper) {
+            wrapper.innerHTML = renderLiveScoreSummary(match);
+        }
+
+        updateUndoBtn();
+        abortInput();
+        checkOverAndPromptBowler();
+    }
+
     function findRow(list, id) {
         return (list || []).find((p) => String(p.id) === String(id));
     }
@@ -48,12 +278,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // used directly for runs/dot/wide/no-ball (the branches with no
     // further "who/what" questions attached to them).
     async function submitDirect(body) {
-        const data = await postJson(`/turfs/live/${matchId}/ball`, {
-            innings: match.currentInnings,
-            ...body,
-        });
-        if (redirectToSessionIfDone(data.match)) return;
-        refresh();
+        if (isSubmitting) return;
+        isSubmitting = true;
+        scorePadGrid.style.pointerEvents = 'none';
+        try {
+            const data = await postJson(`/turfs/live/${matchId}/ball`, {
+                innings: match.currentInnings,
+                ...body,
+            });
+            handleMatchUpdate(data.match);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            isSubmitting = false;
+            scorePadGrid.style.pointerEvents = '';
+        }
     }
 
     const scorePadHeader = document.getElementById('scorePadHeader');
@@ -193,11 +432,15 @@ function abortInput() {
     if (changeKeeperBtn) {
         changeKeeperBtn.addEventListener('click', () => {
             openCardPicker(team.bowling, 'Select Wicketkeeper', async (id) => {
-                await postJson(`/turfs/live/${matchId}/setup`, {
-                    innings: match.currentInnings,
-                    keeperId: id,
-                });
-                refresh();
+                try {
+                    const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                        innings: match.currentInnings,
+                        keeperId: id,
+                    });
+                    handleMatchUpdate(data.match);
+                } catch (err) {
+                    console.error(err);
+                }
             });
         });
     }
@@ -260,54 +503,63 @@ function abortInput() {
     // (catch/bowled/hitwicket/stumping/retired/obstructing/runout).
     // Runs/dot/wide/no-ball never reach this — they submit via submitDirect.
     async function submitBall() {
-        let data;
-        if (outType === 'runout') {
-            data = await postJson(`/turfs/live/${matchId}/ball`, {
-                innings: match.currentInnings,
-                type: 'out',
-                outType: 'runout',
-                outPlayerId,
-                fielderId,
-                newBatsmanId,
-                runoutRuns,
-                isNoBall: isNoBallRunout,
-            });
-        } else if (outType === 'retired') {
-            data = await postJson(`/turfs/live/${matchId}/ball`, {
-                innings: match.currentInnings,
-                type: 'retire',
-                outPlayerId,
-                newBatsmanId,
-            });
-        } else if (outType === 'catch') {
-            data = await postJson(`/turfs/live/${matchId}/ball`, {
-                innings: match.currentInnings,
-                type: 'out',
-                outType: 'catch',
-                fielderId,
-                newBatsmanId,
-            });
-        } else if (outType === 'obstructing') {
-            data = await postJson(`/turfs/live/${matchId}/ball`, {
-                innings: match.currentInnings,
-                type: 'out',
-                outType: 'obstructing',
-                outPlayerId,
-                newBatsmanId,
-            });
-        } else {
-            // bowled / hitwicket / stumping (stumping can optionally be
-            // off a wide — penalty run, ball doesn't count as legal)
-            data = await postJson(`/turfs/live/${matchId}/ball`, {
-                innings: match.currentInnings,
-                type: 'out',
-                outType,
-                newBatsmanId,
-                isWide: outType === 'stumping' ? isWideStumping : undefined,
-            });
+        if (isSubmitting) return;
+        isSubmitting = true;
+        scorePadGrid.style.pointerEvents = 'none';
+        try {
+            let data;
+            if (outType === 'runout') {
+                data = await postJson(`/turfs/live/${matchId}/ball`, {
+                    innings: match.currentInnings,
+                    type: 'out',
+                    outType: 'runout',
+                    outPlayerId,
+                    fielderId,
+                    newBatsmanId,
+                    runoutRuns,
+                    isNoBall: isNoBallRunout,
+                });
+            } else if (outType === 'retired') {
+                data = await postJson(`/turfs/live/${matchId}/ball`, {
+                    innings: match.currentInnings,
+                    type: 'retire',
+                    outPlayerId,
+                    newBatsmanId,
+                });
+            } else if (outType === 'catch') {
+                data = await postJson(`/turfs/live/${matchId}/ball`, {
+                    innings: match.currentInnings,
+                    type: 'out',
+                    outType: 'catch',
+                    fielderId,
+                    newBatsmanId,
+                });
+            } else if (outType === 'obstructing') {
+                data = await postJson(`/turfs/live/${matchId}/ball`, {
+                    innings: match.currentInnings,
+                    type: 'out',
+                    outType: 'obstructing',
+                    outPlayerId,
+                    newBatsmanId,
+                });
+            } else {
+                // bowled / hitwicket / stumping (stumping can optionally be
+                // off a wide — penalty run, ball doesn't count as legal)
+                data = await postJson(`/turfs/live/${matchId}/ball`, {
+                    innings: match.currentInnings,
+                    type: 'out',
+                    outType,
+                    newBatsmanId,
+                    isWide: outType === 'stumping' ? isWideStumping : undefined,
+                });
+            }
+            handleMatchUpdate(data.match);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            isSubmitting = false;
+            scorePadGrid.style.pointerEvents = '';
         }
-        if (redirectToSessionIfDone(data.match)) return;
-        refresh();
     }
 
     function renderScorePad() {
@@ -495,29 +747,25 @@ scorePadCloseBtn.addEventListener('click', () => {
 });
 
     // Undo: steps the whole match back by exactly one ball. The backend
-    // only keeps a single snapshot (cleared right after it's used), so
-    // this can only ever go back one ball, never a second time in a row.
+    // only keeps a snapshot stack, so this can go back up to 3 balls.
     scorePadUndoBtn.addEventListener('click', async () => {
-        if (scorePadUndoBtn.disabled) return;
+        if (scorePadUndoBtn.disabled || isSubmitting) return;
         scorePadUndoBtn.disabled = true;
+        isSubmitting = true;
         try {
-            await postJson(`/turfs/live/${matchId}/undo`, {});
-            refresh();
+            const data = await postJson(`/turfs/live/${matchId}/undo`, {});
+            sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + match.currentInnings);
+            handleMatchUpdate(data.match);
         } catch (err) {
             // Request failed — nothing to reload for, so re-enable it.
             scorePadUndoBtn.disabled = false;
+        } finally {
+            isSubmitting = false;
         }
     });
 
-    const undoCount = (match.lastBallSnapshots || []).length;
-    scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
-    scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
+    updateUndoBtn();
     renderScorePad();
-
-    // ---- Forced "next bowler" prompt at the start of a new over ----
-    function isInningsOver(t) {
-        return t.legalBalls >= match.overs * 6 || t.wickets >= t.batting.length - 1 || !!t.endedEarly;
-    }
 
     function promptNextBowler() {
         const cancelBtn = document.getElementById('cancelCardPicker');
@@ -526,22 +774,21 @@ scorePadCloseBtn.addEventListener('click', () => {
         closeBtn.style.display = 'none';
         const pool = team.bowling.filter((p) => String(p.id) !== String(team.keeperId));
         openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
-            await postJson(`/turfs/live/${matchId}/setup`, {
-                innings: match.currentInnings,
-                bowlerId: id,
-            });
-            cancelBtn.style.display = '';
-            closeBtn.style.display = '';
-            refresh();
+            try {
+                const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                    innings: match.currentInnings,
+                    bowlerId: id,
+                });
+                cancelBtn.style.display = '';
+                closeBtn.style.display = '';
+                handleMatchUpdate(data.match);
+            } catch (err) {
+                cancelBtn.style.display = '';
+                closeBtn.style.display = '';
+                console.error(err);
+            }
         });
     }
 
-    if (team.legalBalls > 0 && team.legalBalls % 6 === 0 && !isInningsOver(team)) {
-        const storageKey = 'bowlerPrompted_' + matchId + '_' + match.currentInnings;
-        const lastPromptedBalls = sessionStorage.getItem(storageKey);
-        if (String(team.legalBalls) !== lastPromptedBalls) {
-            sessionStorage.setItem(storageKey, String(team.legalBalls));
-            promptNextBowler();
-        }
-    }
+    checkOverAndPromptBowler();
 });
