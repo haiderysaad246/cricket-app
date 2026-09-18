@@ -1,9 +1,11 @@
 const crypto = require("crypto");
+const Session = require("../models/session.model");
 
 const SECRET = process.env.ADMIN_SECRET || "cricket-club-dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 const COOKIE_NAME = "cricket_role";
-const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_TIMEOUT_MS = (parseInt(process.env.SESSION_TIMEOUT_MINUTES, 10) || 120) * 60 * 1000; // 2 hours
+const MAX_AGE_MS = SESSION_TIMEOUT_MS;
 
 function sign(value) {
     const sig = crypto.createHmac("sha256", SECRET).update(value).digest("hex");
@@ -35,4 +37,89 @@ function parseCookies(req) {
     return out;
 }
 
-module.exports = { sign, verify, parseCookies, ADMIN_PASSWORD, COOKIE_NAME, MAX_AGE_MS };
+// In-memory cache for ultra-fast session validation on every request
+let cachedSession = null;
+let cacheInitialized = false;
+let lastTouchTime = 0;
+
+async function getActiveSession() {
+    const now = Date.now();
+    if (!cacheInitialized) {
+        try {
+            const doc = await Session.findOne({});
+            cachedSession = doc ? doc.toObject() : null;
+            cacheInitialized = true;
+        } catch (err) {
+            console.error("Error reading session from DB:", err);
+            return null;
+        }
+    }
+
+    if (cachedSession) {
+        const lastActiveTime = new Date(cachedSession.lastActive).getTime();
+        if (now - lastActiveTime > SESSION_TIMEOUT_MS) {
+            await destroySession(cachedSession.sessionId);
+            return null;
+        }
+        return cachedSession;
+    }
+
+    return null;
+}
+
+async function createSession(role = "admin") {
+    const sessionId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(24).toString("hex");
+    try {
+        await Session.deleteMany({});
+        const doc = await Session.create({
+            sessionId,
+            role,
+            createdAt: new Date(),
+            lastActive: new Date(),
+        });
+        cachedSession = doc.toObject();
+        cacheInitialized = true;
+        lastTouchTime = Date.now();
+        return sessionId;
+    } catch (err) {
+        console.error("Error creating session in DB:", err);
+        throw err;
+    }
+}
+
+async function destroySession(sessionId) {
+    cachedSession = null;
+    cacheInitialized = true;
+    try {
+        await Session.deleteMany({});
+    } catch (err) {
+        console.error("Error destroying session in DB:", err);
+    }
+}
+
+function touchSession(sessionId) {
+    const now = Date.now();
+    if (now - lastTouchTime > 60 * 1000) { // Throttle DB writes to once per minute
+        lastTouchTime = now;
+        if (cachedSession && cachedSession.sessionId === sessionId) {
+            cachedSession.lastActive = new Date(now);
+        }
+        Session.updateOne({ sessionId }, { lastActive: new Date(now) }).catch((err) => {
+            console.error("Error touching session:", err);
+        });
+    }
+}
+
+module.exports = {
+    sign,
+    verify,
+    parseCookies,
+    ADMIN_PASSWORD,
+    COOKIE_NAME,
+    MAX_AGE_MS,
+    SESSION_TIMEOUT_MS,
+    getActiveSession,
+    createSession,
+    destroySession,
+    touchSession,
+};

@@ -1,11 +1,31 @@
-const { verify, parseCookies, COOKIE_NAME } = require("../utils/auth");
+const { verify, parseCookies, COOKIE_NAME, getActiveSession, touchSession } = require("../utils/auth");
 
 // Runs on every request — makes req.isAdmin / res.locals.isAdmin available everywhere (views included)
-function attachRole(req, res, next) {
-    const cookies = parseCookies(req);
-    const role = verify(cookies[COOKIE_NAME]);
-    req.isAdmin = role === "admin";
-    res.locals.isAdmin = req.isAdmin;
+async function attachRole(req, res, next) {
+    try {
+        const cookies = parseCookies(req);
+        const sessionId = verify(cookies[COOKIE_NAME]);
+        if (!sessionId) {
+            req.isAdmin = false;
+            res.locals.isAdmin = false;
+            return next();
+        }
+
+        const activeSession = await getActiveSession();
+        if (activeSession && activeSession.sessionId === sessionId) {
+            req.isAdmin = true;
+            res.locals.isAdmin = true;
+            req.sessionId = sessionId;
+            touchSession(sessionId);
+        } else {
+            req.isAdmin = false;
+            res.locals.isAdmin = false;
+        }
+    } catch (err) {
+        console.error("attachRole error:", err);
+        req.isAdmin = false;
+        res.locals.isAdmin = false;
+    }
     next();
 }
 
@@ -18,3 +38,4 @@ function requireAdmin(req, res, next) {
 }
 
 module.exports = { attachRole, requireAdmin };
+
