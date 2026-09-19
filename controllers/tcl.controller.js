@@ -398,6 +398,36 @@ exports.createMatch = async (req, res) => {
     }
 };
 
+// Lets the admin fix "who bats first" / overs on a fixture, but only until
+// scoring starts so no scored balls can end up out of sync.
+exports.editMatch = async (req, res) => {
+    const tournamentId = req.params.id;
+    try {
+        const match = await Match.findOne({ _id: req.params.matchId, tournamentId });
+        if (!match) return res.redirect("/tcl/session/" + tournamentId + "?error=not_found");
+
+        const started = !!(match.team1.strikerId || match.team2.strikerId || match.team1.legalBalls || match.team2.legalBalls);
+        if (match.status !== "live" || started) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=match_started");
+        }
+
+        const oversNum = Number(req.body.overs);
+        if (!Number.isFinite(oversNum) || oversNum < 1) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=invalid_overs");
+        }
+
+        const battingFirstKey = req.body.battingFirst === "team2" ? "team2" : "team1";
+        match.overs = oversNum;
+        match.battingFirst = battingFirstKey;
+        match.currentInnings = battingFirstKey;
+        await match.save();
+        res.redirect("/tcl/session/" + tournamentId);
+    } catch (err) {
+        console.log(err);
+        res.redirect("/tcl/session/" + tournamentId + "?error=edit_match_failed");
+    }
+};
+
 // Permanently removes a tournament and every match scheduled inside it.
 // Teams and players are untouched — only the tournament "folder" and its
 // fixtures go away.

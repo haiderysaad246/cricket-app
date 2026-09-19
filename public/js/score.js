@@ -582,7 +582,7 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
                 <button type="button" class="score-pad-btn" data-run="three">3</button>
                 <button type="button" class="score-pad-btn" data-run="four">4 (Four)</button>
                 <button type="button" class="score-pad-btn" data-run="six">6 (Six)</button>
-                <button type="button" class="score-pad-btn" data-action="morerun">5, 6, 7+</button>
+                <button type="button" class="score-pad-btn" data-action="morerun">4+ (Running)</button>
                 <button type="button" class="score-pad-btn" data-run="one_nr">1 (No Rotation)</button>
 
                 <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="out">
@@ -603,7 +603,7 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
                 </button>
             `;
         } else if (level === 'moreRuns') {
-            scorePadGrid.innerHTML = [5, 6, 7, 8, 9, 10].map((n) => `
+            scorePadGrid.innerHTML = [4, 5, 6, 7, 8, 9, 10].map((n) => `
                 <button type="button" class="score-pad-btn" data-morerun="${n}">${n} runs</button>
             `).join('');
         } else if (level === 'out') {

@@ -113,6 +113,17 @@
                             <% if (m.stage === 'superover') { %>Super Over<% } else if (m.stage === 'semifinal') { %>Semifinal<% } else if (m.stage === 'final') { %>Final<% } else { %>Match <%= matchNumber(m) %><% } %>
                             &middot; <%= m.overs %> overs a side
                         </div>
+                        <% if (isAdmin && m.status === 'live' && !started) { %>
+                            <button type="button" class="toolbar-btn tcl-edit-match-btn" style="display:flex;margin:12px auto 0;"
+                                    data-match-id="<%= m._id %>"
+                                    data-overs="<%= m.overs %>"
+                                    data-batting-first="<%= m.battingFirst %>"
+                                    data-team1="<%= m.team1.name %>"
+                                    data-team2="<%= m.team2.name %>">
+                                <i class="fa-solid fa-pen"></i>
+                                <span>Edit</span>
+                            </button>
+                        <% } %>
                     </a>
                 <% }) %>
             </div>
@@ -199,6 +210,43 @@
         </div>
     </div>
 
+<% if (isAdmin) { %>
+    <div class="confirm-overlay" id="editMatchOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <button type="button" class="score-pad-close-btn modal-x-close" id="closeEditMatch" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h2 class="add-player-title">Edit Match</h2>
+            <form method="POST" id="editMatchForm" class="add-player-form">
+                <div class="form-group">
+                    <label for="editOvers">Overs</label>
+                    <input type="number" name="overs" id="editOvers" min="1" autocomplete="off" required>
+                </div>
+                <div class="form-group">
+                    <label>Which team bats first?</label>
+                    <div class="toss-choice-group">
+                        <label class="toss-choice">
+                            <input type="radio" name="battingFirst" value="team1" autocomplete="off">
+                            <span id="editBatTeam1Label">Team 1</span>
+                        </label>
+                        <label class="toss-choice">
+                            <input type="radio" name="battingFirst" value="team2" autocomplete="off">
+                            <span id="editBatTeam2Label">Team 2</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelEditMatch">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <% } %>
+
 <script>
         window.TURF_MATCHES = <%- JSON.stringify(matches) %>;
     </script>
@@ -243,6 +291,26 @@
                     syncDisabled();
                 });
             });
+
+            const editOverlay = document.getElementById('editMatchOverlay');
+            if (editOverlay) {
+                const editForm = document.getElementById('editMatchForm');
+                document.querySelectorAll('.tcl-edit-match-btn').forEach((btn) => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault(); // the whole card is a link to the live page
+                        e.stopPropagation();
+                        editForm.action = '/tcl/session/<%= tournament._id %>/match/' + btn.dataset.matchId + '/edit';
+                        document.getElementById('editOvers').value = btn.dataset.overs;
+                        document.getElementById('editBatTeam1Label').textContent = btn.dataset.team1;
+                        document.getElementById('editBatTeam2Label').textContent = btn.dataset.team2;
+                        editForm.querySelector('input[name="battingFirst"][value="' + btn.dataset.battingFirst + '"]').checked = true;
+                        editOverlay.style.display = 'flex';
+                    });
+                });
+                document.querySelectorAll('#cancelEditMatch, #closeEditMatch').forEach((b) => {
+                    b.addEventListener('click', () => { editOverlay.style.display = 'none'; });
+                });
+            }
 
             document.querySelector('#addMatchOverlay form').addEventListener('submit', (e) => {
                 if (!team1Input.value || !team2Input.value) {

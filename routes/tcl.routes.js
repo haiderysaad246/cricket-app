@@ -8,6 +8,7 @@ router.get("/", tclController.index);
 router.post("/create", requireAdmin, tclController.createTournament);
 router.get("/session/:id", tclController.showSession);
 router.post("/session/:id/match", requireAdmin, tclController.createMatch);
+router.post("/session/:id/match/:matchId/edit", requireAdmin, tclController.editMatch);
 router.post("/session/:id/delete", requireAdmin, tclController.deleteTournament);
 
 module.exports = router;
