@@ -16,21 +16,46 @@ document.addEventListener('DOMContentLoaded', () => {
         isTabVisible = !document.hidden;
     });
 
+    async function softRefresh(freshMatch) {
+        try {
+            const res = await fetch(location.pathname + location.search, { headers: { Accept: 'text/html' } });
+            if (res.redirected && new URL(res.url).pathname !== location.pathname) {
+                location.href = res.url; // e.g. a Super Over just started
+                return true;
+            }
+            if (!res.ok) return false;
+            const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            const swap = (id) => {
+                const cur = document.getElementById(id);
+                const next = doc.getElementById(id);
+                if (!cur || !next) return false;
+                cur.innerHTML = next.innerHTML;
+                return true;
+            };
+            const ids = ['liveViewSummary', 'innings-players', 'innings-team1', 'innings-team2'];
+            if (!ids.every(swap)) return false;
+            window.MATCH = freshMatch;
+            document.dispatchEvent(new CustomEvent('match:updated', { detail: freshMatch }));
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
     async function checkForUpdate() {
         if (!isTabVisible || isChecking) return; // save battery/data when backgrounded
         isChecking = true;
         try {
-            const res = await fetch(`/turfs/live/${match._id}`, {
+            const res = await fetch(`/turfs/live/${match._id}${location.search}`, {
                 headers: { Accept: 'application/json' },
             });
             if (!res.ok) return;
             const data = await res.json();
             const freshUpdatedAt = data.match?.updatedAt;
             if (freshUpdatedAt && freshUpdatedAt !== lastUpdatedAt) {
-                // Something changed server-side (a ball was scored, innings
-                // switched, etc). Reload to pick up the new state — simplest
-                // reliable way to stay in sync with this page's rich markup.
-                window.location.reload();
+                lastUpdatedAt = freshUpdatedAt;
+                const ok = await softRefresh(data.match);
+                if (!ok) window.location.reload(); // fallback to the old behaviour
             }
         } catch (err) {
             // Silently ignore — next poll will just try again. No need to

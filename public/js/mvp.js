@@ -222,6 +222,7 @@
         if (!window.MATCH) return;
         render(window.MATCH);
     });
+    document.addEventListener('match:updated', (e) => render(e.detail));
 
     window.CricketMVP = { computeMVP };
 })();

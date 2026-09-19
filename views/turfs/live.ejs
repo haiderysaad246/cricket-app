@@ -31,7 +31,9 @@
     <% } %>
 
         <!-- Score summary card -->
-        <%- include('./includes/live-score-summary.ejs', { match, chain }) %>
+        <div id="liveViewSummary" style="display:contents;">
+            <%- include('./includes/live-score-summary.ejs', { match, chain }) %>
+        </div>
 
         <% const battingFirstTeam = match.battingFirst === 'team2' ? match.team2 : match.team1; %>
          
