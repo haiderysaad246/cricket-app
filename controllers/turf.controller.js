@@ -443,10 +443,10 @@ async function aggregateTeamStats(match, teamKey) {
 // Applies one team's batting+bowling rows from a match into the given
 // stat block (either "turfStats" or "tclStats") on every affected player.
 async function applyTeamStats(match, team, statsKey) {
-    for (const row of team.batting) {
-        if (row.status === "yet_to_bat") continue;
+    await Promise.all(team.batting.map(async (row) => {
+        if (row.status === "yet_to_bat") return;
         const player = await Player.findById(row.id);
-        if (!player) continue;
+        if (!player) return;
         const b = player[statsKey].batting;
         const prevTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
         const timesOut = row.status === "out" ? 1 : 0;
@@ -467,11 +467,11 @@ async function applyTeamStats(match, team, statsKey) {
         // sure the save writes it.
         player.markModified(statsKey);
         await player.save();
-    }
-    for (const row of team.bowling) {
-        if (!row.balls && !row.runs && !row.wickets) continue;
+    }));
+    await Promise.all(team.bowling.map(async (row) => {
+        if (!row.balls && !row.runs && !row.wickets) return;
         const player = await Player.findById(row.id);
-        if (!player) continue;
+        if (!player) return;
         const bw = player[statsKey].bowling;
         bw.innings += 1;
         bw.wickets += row.wickets || 0;
@@ -487,7 +487,7 @@ async function applyTeamStats(match, team, statsKey) {
         bw.dotBallPercentage = bw.ballsBowled > 0 ? Number(((bw.dots / bw.ballsBowled) * 100).toFixed(2)) : 0;
         player.markModified(statsKey);
         await player.save();
-    }
+    }));
 }
 // Checks both teams and aggregates whichever one's innings has finished
 // but hasn't been folded in yet. Call after any mutation that could have

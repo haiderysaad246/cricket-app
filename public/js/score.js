@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
         team = match[match.currentInnings];
 
         const isSetUp = !!(team && team.strikerId && team.nonStrikerId && team.currentBowlerId);
-        if (!isSetUp || isInningsOver(team)) {
+        if (isInningsOver(team)) {
             window.location.href = `/turfs/live/${matchId}`;
             return;
         }
@@ -268,6 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUndoBtn();
         updateEditablePlayers();
         abortInput();
+        showPadOrSetup(isSetUp);
         checkOverAndPromptBowler();
     }
 
@@ -444,8 +445,7 @@ function abortInput() {
             const data = await postJson(`/turfs/live/${matchId}/end-innings`, {
                 innings: match.currentInnings,
             });
-            if (redirectToSessionIfDone(data.match)) return;
-            window.location.href = `/turfs/live/${matchId}`;
+            handleMatchUpdate(data.match);
         });
     }
 
@@ -854,6 +854,15 @@ scorePadCloseBtn.addEventListener('click', () => {
         btn.classList.add('is-pressed');
         setTimeout(() => btn.classList.remove('is-pressed'), 300);
     });
+
+    // A new innings that still needs its players: the pad is replaced by a Set
+    // Players button and the popup opens here, so no other page has to load.
+    function showPadOrSetup(isSetUp) {
+        [scorePadHeader, scorePadGrid].forEach((el) => { el.style.display = isSetUp ? '' : 'none'; });
+        document.getElementById('setPlayersBtn').style.display = isSetUp ? 'none' : 'flex';
+        if (!isSetUp) openSetupForm();
+    }
+    document.getElementById('setPlayersBtn').addEventListener('click', openSetupForm);
 
     updateEditablePlayers();
     renderScorePad();
