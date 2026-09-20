@@ -55,7 +55,7 @@ exports.update = async (req, res) => {
         const newImage = req.files?.image ? req.files.image[0].path : null;
         const newImage2 = req.files?.image2 ? req.files.image2[0].path : null;
 
-        const updated = await Player.findByIdAndUpdate(id, { ...updateData, ...(newImage && { image: newImage }), ...(newImage2 && { image2: newImage2 }) }, { new: true, runValidators: true });
+        const updated = await Player.findByIdAndUpdate(id, { ...updateData, ...(newImage && { image: newImage }), ...(newImage2 && { image2: newImage2 }) }, { returnDocument: "after", runValidators: true });
 
         if (newImage && existingPlayer.image && existingPlayer.image !== "/images/placeholder-player.svg") {
             deleteImageFile(existingPlayer.image);

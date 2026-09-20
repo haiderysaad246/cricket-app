@@ -112,9 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'nonStriker':
                 return t.batting.filter((p) => p.status !== 'out' && p.status !== 'retired' && String(p.id) !== String(roleValues.striker || ''));
             case 'bowler':
-                return t.bowling.filter((p) => String(p.id) !== String(roleValues.keeper || ''));
-            case 'keeper':
-                return t.bowling.filter((p) => String(p.id) !== String(roleValues.bowler || ''));
+                return t.bowling;
             default:
                 return [];
         }
@@ -124,7 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
         striker: 'Select Striker',
         nonStriker: 'Select Non-Striker',
         bowler: 'Select Bowler',
-        keeper: 'Select Wicketkeeper',
     };
 
     // roleValues holds the currently chosen player id per role button,
@@ -156,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const scoreBallBtn = document.getElementById('scoreBallBtn');
 
     const team = currentTeam();
-    const isFullySetUp = !!(team.strikerId && team.nonStrikerId && team.currentBowlerId && team.keeperId);
+    const isFullySetUp = !!(team.strikerId && team.nonStrikerId && team.currentBowlerId);
     if (startBtn && isFullySetUp) {
         startBtn.style.display = 'none';
         if (scoreBallBtn) scoreBallBtn.style.display = '';
@@ -175,8 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (mode === 'initial') {
             initialSetupFields.style.display = '';
-            ['striker', 'nonStriker', 'bowler', 'keeper'].forEach((role) => resetRoleChip(role));
-            const prefill = { striker: t.strikerId, nonStriker: t.nonStrikerId, bowler: t.currentBowlerId, keeper: t.keeperId };
+            ['striker', 'nonStriker', 'bowler'].forEach((role) => resetRoleChip(role));
+            const prefill = { striker: t.strikerId, nonStriker: t.nonStrikerId, bowler: t.currentBowlerId };
             Object.keys(prefill).forEach((role) => {
                 if (!prefill[role]) return;
                 const pool = poolForRole(role);
@@ -187,19 +184,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (chipEl) chipEl.innerHTML = chipHtml(player);
                 }
             });
-        } else {
-            // Keeper-only: striker/non-striker/bowler change through the
-            // ball-by-ball flow later, not here.
-            initialSetupFields.style.display = 'none';
-            resetRoleChip('keeper');
-            if (t.keeperId) {
-                const pool = poolForRole('keeper');
-                const player = findPlayer(pool, t.keeperId);
-                if (player) {
-                    roleValues.keeper = String(t.keeperId);
-                    document.getElementById('pickedKeeper').innerHTML = chipHtml(player);
-                }
-            }
         }
 
         setupOverlay.style.display = 'flex';
@@ -227,42 +211,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const strikerId = roleValues.striker;
             const nonStrikerId = roleValues.nonStriker;
             const bowlerId = roleValues.bowler;
-            const keeperId = roleValues.keeper;
 
-            if (!strikerId || !nonStrikerId || !bowlerId || !keeperId) {
-                alert('Please select all four players.');
+            if (!strikerId || !nonStrikerId || !bowlerId) {
+                alert('Please select striker, non-striker and bowler.');
                 return;
             }
             if (strikerId === nonStrikerId) {
                 alert('Striker and non-striker must be different players.');
                 return;
             }
-            if (bowlerId === keeperId) {
-                alert('Bowler and wicketkeeper must be different players.');
-                return;
-            }
-
             await postJson(`/turfs/live/${matchId}/setup`, {
                 innings: match.currentInnings,
                 strikerId,
                 nonStrikerId,
                 bowlerId,
-                keeperId,
             });
             // All four roles just got set — go straight into scoring
             // instead of leaving the user to find the "Score Ball" button.
             window.location.href = `/turfs/live/${matchId}/score`;
             return;
-        } else {
-            const keeperId = roleValues.keeper;
-            if (!keeperId) {
-                alert('Please select a wicketkeeper.');
-                return;
-            }
-            await postJson(`/turfs/live/${matchId}/setup`, {
-                innings: match.currentInnings,
-                keeperId,
-            });
         }
 
         refresh();

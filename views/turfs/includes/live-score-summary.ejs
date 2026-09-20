@@ -90,7 +90,7 @@
                 <% if (liveBowler) { %>
                     <div class="live-player-line">
                         <span class="live-player-name"><%= liveBowler.name %></span>
-                        <span class="live-player-stat"><%= liveBowler.wickets %>/<%= liveBowler.balls %></span>
+                        <span class="live-player-stat"><%= liveBowler.runs || 0 %>/<%= liveBowler.wickets || 0 %></span>
                     </div>
                 <% } %>
                 <div class="live-over-balls">

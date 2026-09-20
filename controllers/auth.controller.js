@@ -25,8 +25,10 @@ exports.login = async (req, res) => {
         const cookies = parseCookies(req);
         const currentSessionId = verify(cookies[COOKIE_NAME]);
 
-        // If an active session is held by another user/browser, block this login
-        if (activeSession && activeSession.sessionId !== currentSessionId) {
+        // Block only if the other session was active in the last 10 minutes, so a
+        // lost cookie or closed browser can't lock everyone out for 2 hours
+        const idleMs = activeSession ? Date.now() - new Date(activeSession.lastActive).getTime() : Infinity;
+        if (activeSession && activeSession.sessionId !== currentSessionId && idleMs < 10 * 60 * 1000) {
             return res.status(403).json({
                 error: "Another user is currently logged in. Only one user can log in at a time. The logged-in user must log out first.",
             });
@@ -36,7 +38,7 @@ exports.login = async (req, res) => {
         res.cookie(COOKIE_NAME, sign(sessionId), {
             httpOnly: true,
             sameSite: "lax",
-            maxAge: MAX_AGE_MS,
+            maxAge: 30 * 24 * 60 * 60 * 1000, // the server-side idle timeout decides when you're logged out
         });
         res.json({ ok: true });
     } catch (err) {

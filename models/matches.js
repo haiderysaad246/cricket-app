@@ -46,6 +46,7 @@ const teamStateSchema = new Schema({
     currentOverBalls: { type: [String], default: [] },
     currentOverRuns: { type: Number, default: 0 },
     overStarted: { type: Boolean, default: false },
+    overSplit: { type: Boolean, default: false }, // bowler changed mid-over, so nobody gets a maiden for it
     totalRuns: { type: Number, default: 0 },
     wickets: { type: Number, default: 0 },
     extraWides: { type: Number, default: 0 },

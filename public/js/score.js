@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const bowlerHtml = liveBowler ? `
                 <div class="live-player-line">
                     <span class="live-player-name">${escapeHtml(liveBowler.name)}</span>
-                    <span class="live-player-stat">${liveBowler.wickets || 0}/${liveBowler.balls || 0}</span>
+                    <span class="live-player-stat">${liveBowler.runs || 0}/${liveBowler.wickets || 0}</span>
                 </div>
             ` : '';
 
@@ -254,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.MATCH = match;
         team = match[match.currentInnings];
 
-        const isSetUp = !!(team && team.strikerId && team.nonStrikerId && team.currentBowlerId && team.keeperId);
+        const isSetUp = !!(team && team.strikerId && team.nonStrikerId && team.currentBowlerId);
         if (!isSetUp || isInningsOver(team)) {
             window.location.href = `/turfs/live/${matchId}`;
             return;
@@ -266,6 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         updateUndoBtn();
+        updateEditablePlayers();
         abortInput();
         checkOverAndPromptBowler();
     }
@@ -428,20 +429,11 @@ function abortInput() {
         });
     }
 
-    const changeKeeperBtn = document.getElementById('changeKeeperBtn');
-    if (changeKeeperBtn) {
-        changeKeeperBtn.addEventListener('click', () => {
-            openCardPicker(team.bowling, 'Select Wicketkeeper', async (id) => {
-                try {
-                    const data = await postJson(`/turfs/live/${matchId}/setup`, {
-                        innings: match.currentInnings,
-                        keeperId: id,
-                    });
-                    handleMatchUpdate(data.match);
-                } catch (err) {
-                    console.error(err);
-                }
-            });
+    function pickStumper(callback) {
+        const pool = team.bowling.filter((p) => String(p.id) !== String(team.currentBowlerId));
+        openCardPicker(pool, 'Who Stumped It?', (id) => {
+            fielderId = id;
+            callback();
         });
     }
 
@@ -550,6 +542,7 @@ function abortInput() {
                     type: 'out',
                     outType,
                     newBatsmanId,
+                    fielderId: outType === 'stumping' ? fielderId : undefined,
                     isWide: outType === 'stumping' ? isWideStumping : undefined,
                 });
             }
@@ -683,6 +676,8 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
                     isWideStumping = outType === 'stumping' && btn.dataset.wideStump === '1';
                     if (outType === 'catch') {
                         pickFielder(() => pickNewBatsman(() => submitBall(), true));
+                    } else if (outType === 'stumping') {
+                        pickStumper(() => pickNewBatsman(() => submitBall(), !isWideStumping));
                     } else if (outType === 'retired') {
                         // Retire never consumes a ball, so it can only end
                         // the innings via all-out, never via overs.
@@ -748,23 +743,119 @@ scorePadCloseBtn.addEventListener('click', () => {
 
     // Undo: steps the whole match back by exactly one ball. The backend
     // only keeps a snapshot stack, so this can go back up to 3 balls.
-    scorePadUndoBtn.addEventListener('click', async () => {
-        if (scorePadUndoBtn.disabled || isSubmitting) return;
-        scorePadUndoBtn.disabled = true;
+    async function doUndo() {
+        if (isSubmitting) return;
         isSubmitting = true;
+        scorePadUndoBtn.disabled = true;
         try {
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
             sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + match.currentInnings);
-            handleMatchUpdate(data.match);
+            sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + data.match.currentInnings);
+            handleMatchUpdate(data.match); // redraws in place, also when it goes back to the previous innings
         } catch (err) {
-            // Request failed — nothing to reload for, so re-enable it.
             scorePadUndoBtn.disabled = false;
         } finally {
             isSubmitting = false;
         }
+    }
+    scorePadUndoBtn.addEventListener('click', doUndo);
+
+    // Tap the bowler's line to change the bowler, even mid-over.
+    document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
+        if (!e.target.closest('.live-bowler-col .live-player-line') || isSubmitting) return;
+        const pool = team.bowling.filter((p) => String(p.id) !== String(team.currentBowlerId));
+        openCardPicker(pool, 'Change Bowler', async (id) => {
+            try {
+                const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                    innings: match.currentInnings,
+                    bowlerId: id,
+                });
+                handleMatchUpdate(data.match);
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    });
+
+    // ---- Change players before the first ball --------------------------
+    function ballsStarted(t) {
+        return !!t && ((t.legalBalls || 0) > 0 || (t.totalRuns || 0) > 0 || (t.wickets || 0) > 0 || (t.currentOverBalls || []).length > 0);
+    }
+    function updateEditablePlayers() {
+        document.getElementById('liveScoreSummaryWrapper').classList.toggle('can-edit-players', !ballsStarted(team));
+    }
+
+    const scoreSetupOverlay = document.getElementById('scoreSetupOverlay');
+    const setupPicks = {};
+    const setupChipIds = { striker: 'spStriker', nonStriker: 'spNonStriker', bowler: 'spBowler' };
+    const setupTitles = { striker: 'Select Striker', nonStriker: 'Select Non-Striker', bowler: 'Select Bowler' };
+
+    function setupPool(role) {
+        const notOut = (p) => p.status !== 'out' && p.status !== 'retired';
+        if (role === 'striker') return team.batting.filter((p) => notOut(p) && String(p.id) !== String(setupPicks.nonStriker || ''));
+        if (role === 'nonStriker') return team.batting.filter((p) => notOut(p) && String(p.id) !== String(setupPicks.striker || ''));
+        return team.bowling;
+    }
+    function showSetupChip(role) {
+        const p = findRow(role === 'bowler' ? team.bowling : team.batting, setupPicks[role]);
+        document.getElementById(setupChipIds[role]).innerHTML = p
+            ? `<span class="picked-player-chip"><img src="${p.image}" alt="${escapeHtml(p.name)}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';"><span>${escapeHtml(p.name)}</span></span>`
+            : '';
+    }
+    function openSetupForm() {
+        setupPicks.striker = team.strikerId;
+        setupPicks.nonStriker = team.nonStrikerId;
+        setupPicks.bowler = team.currentBowlerId;
+        Object.keys(setupChipIds).forEach(showSetupChip);
+        scoreSetupOverlay.style.display = 'flex';
+    }
+
+    document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
+        if (e.target.closest('.live-batters-col') && !ballsStarted(team) && !isSubmitting) openSetupForm();
+    });
+    document.querySelectorAll('#scoreSetupForm .role-pick-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const role = btn.dataset.role;
+            openCardPicker(setupPool(role), setupTitles[role], (id) => {
+                setupPicks[role] = id;
+                showSetupChip(role);
+            });
+        });
+    });
+    document.querySelectorAll('#cancelScoreSetup, #closeScoreSetup').forEach((b) => {
+        b.addEventListener('click', () => { scoreSetupOverlay.style.display = 'none'; });
+    });
+    document.getElementById('scoreSetupForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!setupPicks.striker || !setupPicks.nonStriker || !setupPicks.bowler) {
+            alert('Please select striker, non-striker and bowler.');
+            return;
+        }
+        try {
+            const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                innings: match.currentInnings,
+                strikerId: setupPicks.striker,
+                nonStrikerId: setupPicks.nonStriker,
+                bowlerId: setupPicks.bowler,
+            });
+            scoreSetupOverlay.style.display = 'none';
+            handleMatchUpdate(data.match);
+        } catch (err) {
+            console.error(err);
+        }
     });
 
     updateUndoBtn();
+    // Click feedback: a button goes lighter as soon as it's tapped, and stays
+    // that way briefly even if the pad redraws right after.
+    document.addEventListener('pointerdown', (e) => {
+        const btn = e.target.closest('button, .score-pad-backbar, .ig-picker-item');
+        if (!btn || btn.disabled) return;
+        btn.classList.add('is-pressed');
+        setTimeout(() => btn.classList.remove('is-pressed'), 300);
+    });
+
+    updateEditablePlayers();
     renderScorePad();
 
     function promptNextBowler() {
@@ -772,7 +863,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         const closeBtn = cardPickerCloseBtn;
         cancelBtn.style.display = 'none';
         closeBtn.style.display = 'none';
-        const pool = team.bowling.filter((p) => String(p.id) !== String(team.keeperId));
+        const pool = team.bowling;
         openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
             try {
                 const data = await postJson(`/turfs/live/${matchId}/setup`, {

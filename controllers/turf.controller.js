@@ -284,7 +284,7 @@ exports.showScorePad = async (req, res) => {
             return respond(req, res, { json: { error: "match_not_found" }, redirect: redirectUrl });
         }
         const team = match[match.currentInnings];
-        const isFullySetUp = !!(team.strikerId && team.nonStrikerId && team.currentBowlerId && team.keeperId);
+        const isFullySetUp = !!(team.strikerId && team.nonStrikerId && team.currentBowlerId);
         if (!isFullySetUp) {
             // Players haven't been picked for this innings yet — bounce
             // back to the match page where that setup modal lives.
@@ -480,7 +480,7 @@ async function applyTeamStats(match, team, statsKey) {
         bw.runsConceded += row.runs || 0;
         bw.maidens += row.maidens || 0;
         bw.hatTricks += row.hatTrick ? 1 : 0;
-        bw.overs = Math.floor(bw.ballsBowled / 6);
+        bw.overs += Math.ceil((row.balls || 0) / 6); // a started over counts as an over
         bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
         bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
         bw.strikeRate = bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0;
@@ -493,12 +493,67 @@ async function applyTeamStats(match, team, statsKey) {
 // but hasn't been folded in yet. Call after any mutation that could have
 // just completed an innings.
 async function aggregatePendingInningsStats(match) {
+    const matchDone = match.status === "completed"; // chased-down innings never "completes" by overs/wickets
     for (const key of ["team1", "team2"]) {
-        if (isInningsComplete(match, key)) {
+        if (matchDone || isInningsComplete(match, key)) {
             await aggregateTeamStats(match, key);
         }
     }
 }
+
+// Exact opposite of aggregateTeamStats — used by undo when the innings being
+// rolled back was already added to player profiles. (A career "highest
+// score" can't be rolled back; everything else can.)
+async function reverseTeamStats(match, teamKey) {
+    const team = match[teamKey];
+    if (!team || !team.statsAggregated) return;
+    const keys = match.tournamentId ? ["turfStats", "tclStats"] : ["turfStats"];
+    for (const statsKey of keys) {
+        for (const row of team.batting) {
+            if (row.status === "yet_to_bat") continue;
+            const player = await Player.findById(row.id);
+            if (!player) continue;
+            const b = player[statsKey].batting;
+            const curTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
+            const timesOut = row.status === "out" ? 1 : 0;
+            const newTimesOut = Math.max(curTimesOut - timesOut, 0);
+            b.matches = Math.max(b.matches - 1, 0);
+            b.innings = Math.max(b.innings - 1, 0);
+            b.runs = Math.max(b.runs - row.runs, 0);
+            b.ballsFaced = Math.max(b.ballsFaced - row.balls, 0);
+            b.dots = Math.max(b.dots - (row.dots || 0), 0);
+            b.fours = Math.max(b.fours - row.fours, 0);
+            b.sixes = Math.max(b.sixes - row.sixes, 0);
+            if (timesOut && row.runs === 0) b.ducks = Math.max(b.ducks - 1, 0);
+            b.strikeRate = b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0;
+            b.average = newTimesOut > 0 ? Number((b.runs / newTimesOut).toFixed(2)) : b.runs;
+            player.markModified(statsKey);
+            await player.save();
+        }
+        for (const row of team.bowling) {
+            if (!row.balls && !row.runs && !row.wickets) continue;
+            const player = await Player.findById(row.id);
+            if (!player) continue;
+            const bw = player[statsKey].bowling;
+            bw.innings = Math.max(bw.innings - 1, 0);
+            bw.wickets = Math.max(bw.wickets - (row.wickets || 0), 0);
+            bw.ballsBowled = Math.max(bw.ballsBowled - (row.balls || 0), 0);
+            bw.dots = Math.max(bw.dots - (row.dots || 0), 0);
+            bw.runsConceded = Math.max(bw.runsConceded - (row.runs || 0), 0);
+            bw.maidens = Math.max(bw.maidens - (row.maidens || 0), 0);
+            bw.hatTricks = Math.max(bw.hatTricks - (row.hatTrick ? 1 : 0), 0);
+            bw.overs = Math.max(bw.overs - Math.ceil((row.balls || 0) / 6), 0);
+            bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
+            bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
+            bw.strikeRate = bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0;
+            bw.dotBallPercentage = bw.ballsBowled > 0 ? Number(((bw.dots / bw.ballsBowled) * 100).toFixed(2)) : 0;
+            player.markModified(statsKey);
+            await player.save();
+        }
+    }
+    team.statsAggregated = false;
+}
+exports.aggregateTeamStats = aggregateTeamStats; // used by repair-tcl-stats.js
 // Crowns this match's MVP (top of its points table) the moment the match
 // is completed — regardless of which route flipped it to "completed".
 // Guarded by match.mvpAwarded so it only ever fires once per match.
@@ -515,8 +570,21 @@ exports.setupInnings = async (req, res) => {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
         const { innings, strikerId, nonStrikerId, bowlerId, keeperId } = req.body;
-        const team = match[innings];
+                const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
+        // Re-picking the opening pair is only allowed before the first ball; the
+        // previous pair goes back to "yet to bat" so nobody is left stuck as "batting".
+        if (strikerId && nonStrikerId) {
+            const started = team.legalBalls > 0 || team.totalRuns > 0 || team.wickets > 0 || (team.currentOverBalls || []).length > 0;
+            if (started) return res.status(400).json({ error: "innings_already_started" });
+            [team.strikerId, team.nonStrikerId].forEach((oldId) => {
+                const oldRow = oldId ? findRow(team.batting, oldId) : null;
+                if (oldRow && oldRow.status === "batting" && !oldRow.balls && !oldRow.runs) {
+                    oldRow.status = "yet_to_bat";
+                    oldRow.battingOrder = null;
+                }
+            });
+        }
         if (strikerId) {
             team.strikerId = strikerId;
             const row = findRow(team.batting, strikerId);
@@ -528,8 +596,11 @@ exports.setupInnings = async (req, res) => {
             if (row && row.status === "yet_to_bat") { row.status = "batting"; stampBattingOrder(row, team); }
         }
         if (bowlerId) {
+            if (team.overStarted && team.currentBowlerId && String(team.currentBowlerId) !== String(bowlerId)) {
+                team.overSplit = true;
+            }
             team.currentBowlerId = bowlerId;
-            if (team.legalBalls % 6 === 0 && !isInningsComplete(match, innings)) {
+            if (!team.overStarted && team.legalBalls % 6 === 0 && !isInningsComplete(match, innings)) {
                 team.currentOverBalls = [];
             }
         }
@@ -565,6 +636,9 @@ exports.undoLastBall = async (req, res) => {
         const stack = match.lastBallSnapshots || [];
         if (!stack.length) return res.status(400).json({ error: "nothing_to_undo" });
         const snap = stack.pop();
+        if (match[snap.innings].statsAggregated) {
+            await reverseTeamStats(match, snap.innings);
+        }
         match[snap.innings] = snap.team;
         match.currentInnings = snap.currentInnings;
         match.markModified(snap.innings);
@@ -789,7 +863,12 @@ if (runs % 2 === 1) rotateStrike();
                     dismissalText = fielderRow ? `c ${fielderRow.name} b ${bowler.name}` : `Caught b ${bowler.name}`;
                 } else if (outType === "bowled") dismissalText = `Bowled b ${bowler.name}`;
                 else if (outType === "hitwicket") dismissalText = `Hit Wicket b ${bowler.name}`;
-                else if (outType === "stumping") dismissalText = isWideStumping ? `St. ${team.keeperName || "Keeper"} b ${bowler.name} (Wide)` : `St. ${team.keeperName || "Keeper"} b ${bowler.name}`;
+                else if (outType === "stumping") {
+                    const stumperId = req.body.fielderId;
+                    const stumperRow = stumperId && String(stumperId) !== String(team.currentBowlerId) ? findRow(team.bowling, stumperId) : null;
+                    const stumperName = stumperRow ? stumperRow.name : "Keeper";
+                    dismissalText = isWideStumping ? `St. ${stumperName} b ${bowler.name} (Wide)` : `St. ${stumperName} b ${bowler.name}`;
+                }
                 else if (outType === "obstructing") dismissalText = "Obstructing the Field";
                 const outPlayerId = req.body.outPlayerId || team.strikerId;
                 const dismissedRow = findRow(team.batting, outPlayerId);
@@ -814,10 +893,11 @@ if (runs % 2 === 1) rotateStrike();
             }
         }
         if (isLegalBall && team.legalBalls % 6 === 0) {
-            if (team.currentOverRuns === 0) {
+            if (team.currentOverRuns === 0 && !team.overSplit) {
                 bowler.maidens += 1;
             }
             team.overStarted = false;
+            team.overSplit = false;
             rotateStrike();
         }
         autoSwitchInnings(match);
@@ -849,7 +929,7 @@ async function aggregateTurfStats(turfId) {
 acc.set(key, {
                 battedMatches: 0, battingInnings: 0, runs: 0, ballsFaced: 0, dots: 0,
                 fours: 0, sixes: 0, ducks: 0, highest: 0, timesOut: 0,
-                bowlingInnings: 0, wickets: 0, ballsBowled: 0, bowlingDots: 0, runsConceded: 0, maidens: 0, hatTricks: 0,
+                bowlingInnings: 0, wickets: 0, ballsBowled: 0, bowlingDots: 0, runsConceded: 0, maidens: 0, hatTricks: 0, oversCounted: 0,
             });
         }
         return acc.get(key);
@@ -884,6 +964,7 @@ acc.set(key, {
                 a.runsConceded += row.runs;
                 a.maidens += row.maidens || 0;
                 a.hatTricks += row.hatTrick ? 1 : 0;
+                a.oversCounted += Math.ceil((row.balls || 0) / 6);
             });
         });
     });
@@ -912,7 +993,7 @@ acc.set(key, {
         bw.runsConceded += a.runsConceded;
         bw.maidens += a.maidens || 0;
         bw.hatTricks += a.hatTricks || 0;
-        bw.overs = Math.floor(bw.ballsBowled / 6);
+        bw.overs += a.oversCounted;
         bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
         bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
         bw.strikeRate = bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0;

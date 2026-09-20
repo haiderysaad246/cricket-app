@@ -4,7 +4,8 @@ const Session = require("../models/session.model");
 const SECRET = process.env.ADMIN_SECRET || "cricket-club-dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 const COOKIE_NAME = "cricket_role";
-const SESSION_TIMEOUT_MS = (parseInt(process.env.SESSION_TIMEOUT_MINUTES, 10) || 120) * 60 * 1000; // 2 hours
+const SESSION_TIMEOUT_MS = (parseInt(process.env.SESSION_TIMEOUT_MINUTES, 10) || 360) * 60 * 1000; // 6 hours
+
 const MAX_AGE_MS = SESSION_TIMEOUT_MS;
 
 function sign(value) {

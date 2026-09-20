@@ -3,16 +3,13 @@
 <head>
     <%- include('../includes/head.ejs', { title: 'Cricket | Score Ball' }) %>
 </head>
-<body>
+<body class="score-body"></body>
     <div class="score-page">
         <div class="score-page-top">
             <a href="/turfs/live/<%= match._id %>" class="score-page-back-link">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>Back to Match</span>
             </a>
-            <button type="button" class="toolbar-btn" id="changeKeeperBtn" style="margin-bottom:10px;">
-                <i class="fa-solid fa-user-shield"></i>
-                <span>Change Wicketkeeper</span>
             </button>
             <button type="button" class="toolbar-btn toolbar-btn-danger" id="endInningsBtn" style="margin-bottom:10px;">
                 <i class="fa-solid fa-flag-checkered"></i>
@@ -43,6 +40,48 @@
             <div class="score-pad-grid" id="scorePadGrid"></div>
         </div>
     </div>
+<div class="confirm-overlay" id="scoreSetupOverlay">
+    <div class="confirm-modal turf-form-modal">
+        <button type="button" class="score-pad-close-btn modal-x-close" id="closeScoreSetup" aria-label="Close">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+        <h2 class="add-player-title">Set Players</h2>
+        <form class="add-player-form" id="scoreSetupForm">
+            <div class="form-group">
+                <label>Striker (on strike)</label>
+                <button type="button" class="toolbar-btn role-pick-btn" data-role="striker">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Select Player</span>
+                </button>
+                <div class="role-picked-chip" id="spStriker"></div>
+            </div>
+            <div class="form-group">
+                <label>Non-Striker</label>
+                <button type="button" class="toolbar-btn role-pick-btn" data-role="nonStriker">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Select Player</span>
+                </button>
+                <div class="role-picked-chip" id="spNonStriker"></div>
+            </div>
+            <div class="form-group">
+                <label>Bowler</label>
+                <button type="button" class="toolbar-btn role-pick-btn" data-role="bowler">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Select Player</span>
+                </button>
+                <div class="role-picked-chip" id="spBowler"></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="toolbar-btn" id="cancelScoreSetup">Cancel</button>
+                <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                    <i class="fa-solid fa-check"></i>
+                    <span>Save</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <%- include('../includes/card-picker.ejs', { showClose: 'true' }) %>
 
     <script>

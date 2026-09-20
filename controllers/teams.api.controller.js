@@ -116,7 +116,7 @@ exports.update = async (req, res) => {
             updateData.logo = newLogo;
         }
 
-        const updated = await Team.findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
+        const updated = await Team.findByIdAndUpdate(id, updateData, { returnDocument: "after", runValidators: true })
             .populate("players", PLAYER_FIELDS)
             .populate("captain", PLAYER_FIELDS);
 
