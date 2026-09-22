@@ -1,12 +1,26 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, selectedIds, onToggle, onCancel, onDone }) {
+export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, selectedIds, selectedOrder, onToggle, onCancel, onDone }) {
   const [search, setSearch] = useState("");
   useEffect(() => { if (open) setSearch(""); }, [open]);
 
   if (!open) return null;
   const q = search.trim().toLowerCase();
+  const selectedPosition = new Map((selectedOrder || []).map((id, index) => [id, index]));
+  const players = [...allPlayers].sort((a, b) => {
+    const aMatches = q && (a.name || "").toLowerCase().includes(q) ? 1 : 0;
+    const bMatches = q && (b.name || "").toLowerCase().includes(q) ? 1 : 0;
+    if (aMatches !== bMatches) return bMatches - aMatches;
+
+    const aSelected = selectedIds.has(a._id) ? 1 : 0;
+    const bSelected = selectedIds.has(b._id) ? 1 : 0;
+    if (aSelected !== bSelected) return bSelected - aSelected;
+    if (aSelected && bSelected) {
+      return selectedPosition.get(b._id) - selectedPosition.get(a._id);
+    }
+    return allPlayers.indexOf(a) - allPlayers.indexOf(b);
+  });
   return createPortal(
     <div className="confirm-overlay confirm-overlay-visible" onClick={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="confirm-modal picker-modal">
@@ -21,7 +35,7 @@ export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, s
         />
 
         <div className="players-grid picker-grid">
-          {allPlayers.filter((p) => !q || (p.name || "").toLowerCase().includes(q)).map((p) => {
+          {players.map((p) => {
             const locked = lockedIds.has(p._id);
             const selected = selectedIds.has(p._id);
             return (

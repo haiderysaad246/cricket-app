@@ -146,6 +146,7 @@ export default function TeamFormPage({ mode }) {
         allPlayers={allPlayers}
         lockedIds={lockedIds}
         selectedIds={new Set(picker.temp.keys())}
+        selectedOrder={[...picker.temp.keys()]}
         onToggle={togglePick}
         onCancel={() => setPicker({ open: false, temp: new Map() })}
         onDone={donePicker}
