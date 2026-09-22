@@ -456,60 +456,52 @@ async function aggregateTeamStats(match, teamKey) {
 async function applyTeamStats(match, team, statsKey) {
     await Promise.all(team.batting.map(async (row) => {
         if (row.status === "yet_to_bat") return;
-        const player = await Player.findById(row.id);
-        if (!player) return;
-        const statBlock = player[statsKey] || {};
-        const b = statBlock.batting || {};
-        for (const field of ["matches", "innings", "runs", "ballsFaced", "dots", "fours", "sixes", "ducks", "highest"]) {
-            if (!Number.isFinite(b[field])) b[field] = 0;
-        }
-        player[statsKey] = statBlock;
-        statBlock.batting = b;
-        const prevTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
         const timesOut = row.status === "out" ? 1 : 0;
-        const newTimesOut = prevTimesOut + timesOut;
-        b.matches += 1;
-        b.innings += 1;
-        b.runs += row.runs;
-        b.ballsFaced += row.balls;
-        b.dots += row.dots || 0;
-        b.fours += row.fours;
-        b.sixes += row.sixes;
-        if (timesOut && row.runs === 0) b.ducks += 1;
-        b.highest = Math.max(b.highest, row.runs);
-        b.strikeRate = b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0;
-        b.average = newTimesOut > 0 ? Number((b.runs / newTimesOut).toFixed(2)) : b.runs;
-        // Deeply-nested sub-subdocuments sometimes aren't diffed by Mongoose
-        // when mutated in place, so mark the whole stat block changed to make
-        // sure the save writes it.
-        player.markModified(statsKey);
-        await player.save();
+        const update = {
+            $inc: {
+                [`${statsKey}.batting.matches`]: 1,
+                [`${statsKey}.batting.innings`]: 1,
+                [`${statsKey}.batting.runs`]: row.runs || 0,
+                [`${statsKey}.batting.ballsFaced`]: row.balls || 0,
+                [`${statsKey}.batting.dots`]: row.dots || 0,
+                [`${statsKey}.batting.fours`]: row.fours || 0,
+                [`${statsKey}.batting.sixes`]: row.sixes || 0,
+                [`${statsKey}.batting.ducks`]: timesOut && row.runs === 0 ? 1 : 0,
+            },
+            $max: { [`${statsKey}.batting.highest`]: row.runs || 0 },
+        };
+        const updated = await Player.findByIdAndUpdate(row.id, update, { returnDocument: "after" }).lean();
+        if (!updated) throw new Error(`player_not_found:${row.id}`);
+        const b = updated[statsKey].batting;
+        const timesOutTotal = b.average > 0 ? Math.round(b.runs / b.average) : 0;
+        const derived = {
+            [`${statsKey}.batting.strikeRate`]: b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0,
+            [`${statsKey}.batting.average`]: timesOutTotal > 0 ? Number((b.runs / timesOutTotal).toFixed(2)) : b.runs,
+        };
+        await Player.updateOne({ _id: row.id }, { $set: derived });
     }));
     await Promise.all(team.bowling.map(async (row) => {
         if (!row.balls && !row.runs && !row.wickets) return;
-        const player = await Player.findById(row.id);
-        if (!player) return;
-        const statBlock = player[statsKey] || {};
-        const bw = statBlock.bowling || {};
-        for (const field of ["innings", "wickets", "ballsBowled", "dots", "runsConceded", "maidens", "hatTricks", "overs"]) {
-            if (!Number.isFinite(bw[field])) bw[field] = 0;
-        }
-        player[statsKey] = statBlock;
-        statBlock.bowling = bw;
-        bw.innings += 1;
-        bw.wickets += row.wickets || 0;
-        bw.ballsBowled += row.balls || 0;
-        bw.dots += row.dots || 0;
-        bw.runsConceded += row.runs || 0;
-        bw.maidens += row.maidens || 0;
-        bw.hatTricks += row.hatTrick ? 1 : 0;
-        bw.overs += Math.ceil((row.balls || 0) / 6); // a started over counts as an over
-        bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
-        bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
-        bw.strikeRate = bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0;
-        bw.dotBallPercentage = bw.ballsBowled > 0 ? Number(((bw.dots / bw.ballsBowled) * 100).toFixed(2)) : 0;
-        player.markModified(statsKey);
-        await player.save();
+        const updated = await Player.findByIdAndUpdate(row.id, {
+            $inc: {
+                [`${statsKey}.bowling.innings`]: 1,
+                [`${statsKey}.bowling.wickets`]: row.wickets || 0,
+                [`${statsKey}.bowling.ballsBowled`]: row.balls || 0,
+                [`${statsKey}.bowling.dots`]: row.dots || 0,
+                [`${statsKey}.bowling.runsConceded`]: row.runs || 0,
+                [`${statsKey}.bowling.maidens`]: row.maidens || 0,
+                [`${statsKey}.bowling.hatTricks`]: row.hatTrick ? 1 : 0,
+                [`${statsKey}.bowling.overs`]: Math.ceil((row.balls || 0) / 6),
+            },
+        }, { returnDocument: "after" }).lean();
+        if (!updated) throw new Error(`player_not_found:${row.id}`);
+        const bw = updated[statsKey].bowling;
+        await Player.updateOne({ _id: row.id }, { $set: {
+            [`${statsKey}.bowling.economyRate`]: bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0,
+            [`${statsKey}.bowling.average`]: bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0,
+            [`${statsKey}.bowling.strikeRate`]: bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0,
+            [`${statsKey}.bowling.dotBallPercentage`]: bw.ballsBowled > 0 ? Number(((bw.dots / bw.ballsBowled) * 100).toFixed(2)) : 0,
+        } });
     }));
 }
 // Checks both teams and aggregates whichever one's innings has finished
