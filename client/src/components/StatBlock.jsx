@@ -1,11 +1,10 @@
 const BATTING_FIELDS = [
   { label: "Runs", render: (b) => b.runs },
   { label: "Matches", render: (b) => b.matches },
-  { label: "Ducks", render: (b) => b.ducks },
   { label: "Innings", render: (b) => b.innings },
   { label: "Balls Faced", render: (b) => b.ballsFaced },
   { label: "Average", render: (b) => b.average },
-  { label: "Dots", render: (b) => b.dots },
+  { label: "Average Dots / Over", render: (b) => b.ballsFaced > 0 ? ((b.dots || 0) * 6 / b.ballsFaced).toFixed(2) : "0.00" },
   { label: "Strike Rate", render: (b) => b.strikeRate },
   { label: "4s / 6s", render: (b) => `${b.fours} / ${b.sixes}` },
   { label: "Highest", render: (b) => b.highest },
@@ -14,7 +13,6 @@ const BATTING_FIELDS = [
 const BOWLING_FIELDS = [
   { label: "Wickets", render: (b) => b.wickets },
   { label: "Maidens", render: (b) => b.maidens || 0 },
-  { label: "Dot Ball %", render: (b) => `${b.dotBallPercentage}%` },
   { label: "Innings", render: (b) => b.innings },
   { label: "No Ball Runs", render: (b) => b.noBallRuns },
   { label: "Overs", render: (b) => b.overs },
@@ -23,7 +21,7 @@ const BOWLING_FIELDS = [
   { label: "Average", render: (b) => b.average },
   { label: "Runs Conceded", render: (b) => b.runsConceded },
   { label: "Economy Rate", render: (b) => b.economyRate },
-  { label: "Dots", render: (b) => b.dots },
+  { label: "Average Dots / Over", render: (b) => b.ballsBowled > 0 ? ((b.dots || 0) * 6 / b.ballsBowled).toFixed(2) : "0.00" },
   { label: "Strike Rate", render: (b) => b.strikeRate },
 ];
 
