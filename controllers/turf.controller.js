@@ -722,16 +722,15 @@ exports.recordBall = async (req, res) => {
             await aggregatePendingInningsStats(match);
             await awardMatchMVP(match);
         }
+        const justCompleted = match.status === "completed";
         await match.save();
-        await tryCreatePlayoffs(match);
-        res.json({ ok: true, match });
-        } catch (err) {
+        if (justCompleted) await tryCreatePlayoffs(match);
+        res.json({ ok: true, match: matchForBallResponse(match) });
+    } catch (err) {
         console.log(err);
         res.status(400).json({ error: "ball_failed" });
     }
 };
-        const nonStriker = findRow(team.batting, team.nonStrikerId);
-        const striker = findRow(team.batting, team.strikerId);
 // Rolls every match played in this turf into each player's turfStats,
 // then wipes the (temporary) match documents. Averages/rates are
 // recomputed from the accumulated raw totals rather than stored
