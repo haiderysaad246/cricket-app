@@ -6,6 +6,7 @@ const { computeMVP } = require("../utils/mvp");
 const Team = require("../models/team.model");
 const Tournament = require("../models/tcl.model");
 const { maybeCreatePlayoffMatches, maybeCreateSuperOver } = require("./tcl.controller");
+const { applyBall } = require("../public/js/ballRules");
 // Wraps maybeCreatePlayoffMatches/maybeCreateSuperOver so a failure never
 // breaks the match flow — both are nice-to-haves, not blockers for scoring.
 // Super Over check runs first since a freshly-created Super Over match
@@ -47,6 +48,11 @@ async function propagateSuperOverResult(match) {
 function respond(req, res, { json, redirect, status = 200 }) {
     if (req.headers.accept?.includes("application/json")) {
         return res.status(json?.error ? (status === 200 ? 400 : status) : status).json(json ?? { ok: true });
+    }
+    function matchForBallResponse(match) {
+        const json = match.toObject ? match.toObject() : JSON.parse(JSON.stringify(match));
+        delete json.lastBallSnapshots;
+        return json;
     }
     return res.redirect(redirect);
 }
@@ -91,18 +97,24 @@ exports.startLive = async (req, res) => {
         if (!turfId) {
             return respond(req, res, { json: { error: "turf_required" }, redirect: "/turfs?error=turf_required" });
         }
-        const turf = await Turf.findOne({ _id: turfId, status: "active" });
+        const turf = await Turf.findOne({ _id: turfId, status: "active" })
+            .select("_id overs battingFirst team1Name team2Name team1PlayerIds team2PlayerIds team1CaptainId team2CaptainId");
         if (!turf) return respond(req, res, { json: { error: "turf_not_found" }, redirect: "/turfs?error=turf_not_found" });
         // A turf can now stay "active" with several matches inside it, so
         // the live-match guard is scoped per turf instead of globally.
-        const existingLive = await Match.findOne({ status: "live", turfId: turf._id });
+        const isFirstMatch = !turf.overs;
+        const [existingLive, prevMatch] = await Promise.all([
+            Match.findOne({ status: "live", turfId: turf._id }).select("_id"),
+            isFirstMatch ? Promise.resolve(null) : Match.findOne({ turfId: turf._id })
+                .sort({ createdAt: -1 })
+                .select("winnerKey"),
+        ]);
         if (existingLive) {
             return respond(req, res, { json: { ok: true, matchId: existingLive._id }, redirect: "/turfs/live/" + existingLive._id });
         }
         // First match ever played in this turf: overs/team names/toss/roster
         // all come from the form and get locked onto the turf. Every match
         // after that reuses whatever's already on the turf -- no re-picking.
-        const isFirstMatch = !turf.overs;
         if (isFirstMatch) {
             const overs = Number(req.body.overs);
             if (!Number.isFinite(overs) || overs < 1) {
@@ -119,7 +131,6 @@ exports.startLive = async (req, res) => {
         // original toss result.
         let battingFirst = turf.battingFirst;
         if (!isFirstMatch) {
-            const prevMatch = await Match.findOne({ turfId: turf._id }).sort({ createdAt: -1 });
             if (prevMatch && prevMatch.winnerKey) {
                 battingFirst = prevMatch.winnerKey;
             }
@@ -147,8 +158,8 @@ exports.startLive = async (req, res) => {
             return respond(req, res, { json: { error: "players_required" }, redirect: "/turfs/session/" + turf._id + "?error=players_required" });
         }
         const [team1PlayerDocs, team2PlayerDocs] = await Promise.all([
-            Player.find({ _id: { $in: team1PlayerIds } }),
-            Player.find({ _id: { $in: team2PlayerIds } }),
+            Player.find({ _id: { $in: team1PlayerIds } }).select("_id name image image2"),
+            Player.find({ _id: { $in: team2PlayerIds } }).select("_id name image image2"),
         ]);
         const toBattingRow = (p, captainId) => ({
             id: p._id,
@@ -304,7 +315,7 @@ exports.endMatch = async (req, res) => {
         // (maybeDeclareResult flips status to "completed" during scoring).
         // The status === "live" guard below keeps stats from being
         // double-counted if the match already completed.
-const match = await Match.findById(req.params.id);
+        const match = await Match.findById(req.params.id);
         if (match && match.status === "live") {
             // Fold any innings that finished but hasn't been aggregated yet,
             // then save whatever stats exist for the current (in-progress)
@@ -337,8 +348,8 @@ exports.cancelMatch = async (req, res) => {
     try {
         const match = await Match.findByIdAndDelete(req.params.id);
         const redirectUrl = match && match.turfId
-    ? "/turfs/session/" + match.turfId
-    : (match && match.tournamentId ? "/tcl/session/" + match.tournamentId : "/turfs");
+            ? "/turfs/session/" + match.turfId
+            : (match && match.tournamentId ? "/tcl/session/" + match.tournamentId : "/turfs");
         respond(req, res, { json: { ok: true, turfId: match?.turfId || null }, redirect: redirectUrl });
     } catch (err) {
         console.log(err);
@@ -570,7 +581,7 @@ exports.setupInnings = async (req, res) => {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
         const { innings, strikerId, nonStrikerId, bowlerId, keeperId } = req.body;
-                const team = match[innings];
+        const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
         // Re-picking the opening pair is only allowed before the first ball; the
         // previous pair goes back to "yet to bat" so nobody is left stuck as "batting".
@@ -666,9 +677,10 @@ exports.endInnings = async (req, res) => {
         maybeDeclareResult(match);
         await aggregatePendingInningsStats(match);
         await awardMatchMVP(match);
-        await match.save();
-        await tryCreatePlayoffs(match);
-        res.json({ ok: true, match });
+    const justCompleted = match.status === "completed";
+    await match.save();
+    if (justCompleted) await tryCreatePlayoffs(match);
+    res.json({ ok: true, match: matchForBallResponse(match) });
     } catch (err) {
         console.log(err);
         res.status(400).json({ error: "end_innings_failed" });
@@ -681,6 +693,9 @@ exports.recordBall = async (req, res) => {
         const { innings, type } = req.body;
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
+        // Snapshot for undo — captured before any mutation, using the
+        // exact same shared rules the browser uses for optimistic scoring
+        // (public/js/ballRules.js), so the two can never drift apart.
         if (!team.overStarted) {
             team.currentOverBalls = [];
             team.currentOverRuns = 0;
@@ -697,221 +712,26 @@ exports.recordBall = async (req, res) => {
         });
         if (match.lastBallSnapshots.length > 3) match.lastBallSnapshots.shift();
         match.markModified("lastBallSnapshots");
-        // Retire is a standalone action: 1 wicket, no ball/run impact at all.
-        if (type === "retire") {
-            const outPlayerId = req.body.outPlayerId;
-            const newBatsmanId = req.body.newBatsmanId;
-            const outRow = findRow(team.batting, outPlayerId);
-            if (outRow) {
-                outRow.status = "retired";
-                outRow.dismissalText = "Retired Out";
-            }
-            team.wickets += 1;
-            if (String(team.strikerId) === String(outPlayerId)) team.strikerId = newBatsmanId;
-            else team.nonStrikerId = newBatsmanId;
-            const newRow = findRow(team.batting, newBatsmanId);
-            if (newRow && newRow.status === "yet_to_bat") { newRow.status = "batting"; stampBattingOrder(newRow, team); }
-            autoSwitchInnings(match);
-            maybeDeclareResult(match);
-            await match.save();
-            await tryCreatePlayoffs(match);
-            return res.json({ ok: true, match });
+        // All the actual scoring rules live in public/js/ballRules.js now —
+        // the same file the browser uses for optimistic scoring — so the
+        // two can never drift apart.
+        const result = applyBall(match, innings, req.body);
+        if (!result.ok) return res.status(400).json({ error: result.error });
+
+        if (type !== "retire") {
+            await aggregatePendingInningsStats(match);
+            await awardMatchMVP(match);
         }
-        const striker = findRow(team.batting, team.strikerId);
-        const nonStriker = findRow(team.batting, team.nonStrikerId);
-        const bowler = findRow(team.bowling, team.currentBowlerId);
-        if (!striker || !nonStriker || !bowler) {
-            return res.status(400).json({ error: "players_not_set" });
-        }
-        const rotateStrike = () => {
-            const s = team.strikerId;
-            team.strikerId = team.nonStrikerId;
-            team.nonStrikerId = s;
-        };
-        let isLegalBall = false;
-        let bowlerCreditedWicket = false;
-        // Normal legal deliveries: dot/1/2/3/4/6, plus our turf-only
-        // "1 run, no rotation" rule for balls that go out through the open nets.
-const runValues = { dot: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, one_nr: 1 };
-        if (type in runValues) {
-            const runs = runValues[type];
-            isLegalBall = true;
-            striker.runs += runs;
-            striker.balls += 1;
-            if (runs === 0) { striker.dots += 1; bowler.dots += 1; }
-            if (type === "four") striker.fours += 1;
-            if (type === "six") striker.sixes += 1;
-            team.totalRuns += runs;
-            team.legalBalls += 1;
-            bowler.balls += 1;
-            bowler.runs += runs;
-            team.currentOverBalls.push(String(runs));
-            team.currentOverRuns += runs;
-            if (type !== "one_nr" && runs % 2 === 1) rotateStrike();
-        } else if (type === "runs_extra") {
-            // Free-form running total for anything above the standard
-            // 0/1/2/3/4/6 buttons (5, 7, 8... from overthrows etc.).
-const runs = Math.max(0, Number(req.body.runs || 0));
-            isLegalBall = true;
-            striker.runs += runs;
-            striker.balls += 1;
-            if (runs === 0) { striker.dots += 1; bowler.dots += 1; }
-            team.totalRuns += runs;
-            team.legalBalls += 1;
-            bowler.balls += 1;
-            bowler.runs += runs;
-            team.currentOverBalls.push(String(runs));
-            team.currentOverRuns += runs;
-if (runs % 2 === 1) rotateStrike();
-        } else if (type === "wide") {
-            // Wide is not a legal ball; +1 penalty plus any runs run.
-            const wideRuns = Math.max(0, Number(req.body.wideRuns || 0)) || 0;
-            const total = 1 + wideRuns;
-            team.totalRuns += total;
-            team.extraWides += total;
-            bowler.runs += total;
-            team.currentOverBalls.push(wideRuns > 0 ? `wd+${wideRuns}` : "wd");
-            team.currentOverRuns += total;
-            if (wideRuns % 2 === 1) rotateStrike();
-        } else if (type === "noball") {
-            // No ball is not a legal delivery either; +1 penalty run, plus
-            // whatever the batsman scored off it (running runs or a boundary).
-            // No free-hit mechanic in turf rules.
-            const nbRuns = Math.max(0, Number(req.body.noballRuns || 0)) || 0;
-            const isBoundary = req.body.noballBoundary === "four" || req.body.noballBoundary === "six";
-            const total = 1 + nbRuns;
-            team.totalRuns += total;
-            team.extraNoBalls += 1;
-            bowler.runs += total;
-            striker.balls += 1;
-            team.currentOverBalls.push(nbRuns > 0 ? `nb+${nbRuns}` : "nb");
-            team.currentOverRuns += total;
-            if (nbRuns > 0) {
-                striker.runs += nbRuns;
-                if (isBoundary && req.body.noballBoundary === "four") striker.fours += 1;
-                if (isBoundary && req.body.noballBoundary === "six") striker.sixes += 1;
-            }
-            if (!isBoundary && nbRuns % 2 === 1) rotateStrike();
-        } else if (type === "out") {
-            const { outType, newBatsmanId } = req.body;
-            team.wickets += 1;
-            if (outType === "runout") {
-                // Runs completed before the run-out still count, and strike
-                // rotation follows the odd/even completed-runs rule as normal.
-                const runoutRuns = Math.max(0, Number(req.body.runoutRuns || 0)) || 0;
-                const outPlayerId = req.body.outPlayerId;
-                const fielderRow = req.body.fielderId ? findRow(team.bowling, req.body.fielderId) : null;
-                const isNoBallRunout = !!req.body.isNoBall;
-                if (isNoBallRunout) {
-                    // No ball + run out: not a legal delivery — +1 penalty
-                    // run on top of any runs completed before the wicket,
-                    // and it doesn't count toward the over.
-                    const total = 1 + runoutRuns;
-                     team.totalRuns += total;
-                     team.extraNoBalls += 1;
-                     bowler.runs += total;
-                     striker.runs += runoutRuns;
-                     striker.balls += 1;
-                     team.currentOverBalls.push(runoutRuns > 0 ? `nb+${runoutRuns}W` : "nb+W");
-                     team.currentOverRuns += total;
-} else {
-                    isLegalBall = true;
-                    striker.runs += runoutRuns;
-                    striker.balls += 1;
-                    team.totalRuns += runoutRuns;
-                    team.legalBalls += 1;
-                    bowler.balls += 1;
-                    bowler.runs += runoutRuns;
-                    team.currentOverBalls.push(runoutRuns > 0 ? `${runoutRuns}W` : "W");
-                    team.currentOverRuns += runoutRuns;
-                }
-                if (runoutRuns % 2 === 1) rotateStrike();
-                const outRow = findRow(team.batting, outPlayerId);
-                if (outRow) {
-                    outRow.status = "out";
-                    outRow.dismissalText = fielderRow ? `Run Out (${fielderRow.name})` : "Run Out";
-                }
-                if (String(team.strikerId) === String(outPlayerId)) team.strikerId = newBatsmanId;
-                else team.nonStrikerId = newBatsmanId;
-            } else {
-                // Catch/bowled/hit-wicket/stumping/obstructing: 0 runs, no
-                // strike rotation. A stumping off a wide is the one
-                // exception — like any other wide it isn't a legal ball and
-                // costs a penalty run, it just also happens to be a wicket.
-                // Obstructing is the only type here that can be given
-                // against either batter, so it's the only one that takes an
-                // explicit outPlayerId from the client — the rest always
-                // dismiss whoever's on strike.
-                const isWideStumping = outType === "stumping" && !!req.body.isWide;
-                if (isWideStumping) {
-                    team.totalRuns += 1;
-                    team.extraWides += 1;
-                    bowler.runs += 1;
-                    team.currentOverBalls.push("wd+W");
-                    team.currentOverRuns += 1;
-                } else {
-                    isLegalBall = true;
-                    striker.balls += 1;
-                    team.legalBalls += 1;
-                    bowler.balls += 1;
-                    team.currentOverBalls.push("W");
-                }
-                if (outType !== "obstructing") { bowler.wickets += 1; bowlerCreditedWicket = true; }
-                let dismissalText = "";
-                if (outType === "catch") {
-                    const fielderRow = req.body.fielderId ? findRow(team.bowling, req.body.fielderId) : null;
-                    dismissalText = fielderRow ? `c ${fielderRow.name} b ${bowler.name}` : `Caught b ${bowler.name}`;
-                } else if (outType === "bowled") dismissalText = `Bowled b ${bowler.name}`;
-                else if (outType === "hitwicket") dismissalText = `Hit Wicket b ${bowler.name}`;
-                else if (outType === "stumping") {
-                    const stumperId = req.body.fielderId;
-                    const stumperRow = stumperId && String(stumperId) !== String(team.currentBowlerId) ? findRow(team.bowling, stumperId) : null;
-                    const stumperName = stumperRow ? stumperRow.name : "Keeper";
-                    dismissalText = isWideStumping ? `St. ${stumperName} b ${bowler.name} (Wide)` : `St. ${stumperName} b ${bowler.name}`;
-                }
-                else if (outType === "obstructing") dismissalText = "Obstructing the Field";
-                const outPlayerId = req.body.outPlayerId || team.strikerId;
-                const dismissedRow = findRow(team.batting, outPlayerId);
-                if (dismissedRow) {
-                    dismissedRow.status = "out";
-                    dismissedRow.dismissalText = dismissalText;
-                }
-                if (String(team.strikerId) === String(outPlayerId)) team.strikerId = newBatsmanId;
-                else team.nonStrikerId = newBatsmanId;
-            }
-            const newRow = findRow(team.batting, newBatsmanId);
-            if (newRow && newRow.status === "yet_to_bat") { newRow.status = "batting"; stampBattingOrder(newRow, team); }
-        } else {
-            return res.status(400).json({ error: "invalid_ball_type" });
-        }
-        if (isLegalBall) {
-            if (bowlerCreditedWicket) {
-                bowler.wicketStreak = (bowler.wicketStreak || 0) + 1;
-                if (bowler.wicketStreak >= 3) bowler.hatTrick = true;
-            } else {
-                bowler.wicketStreak = 0;
-            }
-        }
-        if (isLegalBall && team.legalBalls % 6 === 0) {
-            if (team.currentOverRuns === 0 && !team.overSplit) {
-                bowler.maidens += 1;
-            }
-            team.overStarted = false;
-            team.overSplit = false;
-            rotateStrike();
-        }
-        autoSwitchInnings(match);
-        maybeDeclareResult(match);
-        await aggregatePendingInningsStats(match);
-        await awardMatchMVP(match);
         await match.save();
         await tryCreatePlayoffs(match);
         res.json({ ok: true, match });
-    } catch (err) {
+        } catch (err) {
         console.log(err);
         res.status(400).json({ error: "ball_failed" });
     }
 };
+        const nonStriker = findRow(team.batting, team.nonStrikerId);
+        const striker = findRow(team.batting, team.strikerId);
 // Rolls every match played in this turf into each player's turfStats,
 // then wipes the (temporary) match documents. Averages/rates are
 // recomputed from the accumulated raw totals rather than stored
@@ -926,7 +746,7 @@ async function aggregateTurfStats(turfId) {
     const getAcc = (id) => {
         const key = String(id);
         if (!acc.has(key)) {
-acc.set(key, {
+            acc.set(key, {
                 battedMatches: 0, battingInnings: 0, runs: 0, ballsFaced: 0, dots: 0,
                 fours: 0, sixes: 0, ducks: 0, highest: 0, timesOut: 0,
                 bowlingInnings: 0, wickets: 0, ballsBowled: 0, bowlingDots: 0, runsConceded: 0, maidens: 0, hatTricks: 0, oversCounted: 0,

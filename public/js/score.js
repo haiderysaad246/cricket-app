@@ -3,7 +3,102 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!match) return; // not on the score page
     const matchId = match._id;
     let team = match[match.currentInnings];
-    let isSubmitting = false;
+    let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
+
+    // ---- Optimistic scoring queue -----------------------------------
+    // Ball taps apply instantly in the browser using the exact same rules
+    // as the server (public/js/ballRules.js), and the network request goes
+    // out in the background through an ordered chain, so fast taps can
+    // never arrive at the server out of order. Undo/setup/end-innings stay
+    // as plain round-trips and just wait for this chain to drain first.
+    let requestChain = Promise.resolve();
+    let pendingBalls = 0;
+    let resyncTriggered = false;
+    function isBusy() { return isSubmitting || pendingBalls > 0; }
+
+    // Only the fields the shared rules can actually predict — excludes
+    // statsAggregated (set server-side by aggregatePendingInningsStats,
+    // not part of the ball rules) so that alone never causes a mismatch.
+    function pickTeamForCompare(t) {
+        if (!t) return t;
+        const { statsAggregated, ...rest } = t;
+        return rest;
+    }
+    function statesMatch(serverMatch, predictedMatch) {
+        const pick = (m) => JSON.stringify({
+            team1: pickTeamForCompare(m.team1),
+            team2: pickTeamForCompare(m.team2),
+            currentInnings: m.currentInnings,
+            result: m.result,
+            winnerKey: m.winnerKey,
+            status: m.status,
+        });
+        return pick(serverMatch) === pick(predictedMatch);
+    }
+
+    // Server disagreed with our guess, or the request failed outright —
+    // drop everything still queued and reload straight from the server,
+    // with a small warning shown once the fresh page loads.
+    function resyncWithWarning(msg) {
+        if (resyncTriggered) return;
+        resyncTriggered = true;
+        try { sessionStorage.setItem('scoreResyncMsg', msg); } catch (e) {}
+        window.location.reload();
+    }
+
+    function applyOptimistic(body) {
+        const predicted = JSON.parse(JSON.stringify(match));
+        const result = window.BallRules.applyBall(predicted, match.currentInnings, body);
+        return result.ok ? predicted : null;
+    }
+
+    async function sendBallInBackground(body, predicted) {
+        if (resyncTriggered) return;
+        try {
+            const res = await fetch(`/turfs/live/${matchId}/ball`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.error || 'request_failed');
+            if (!statesMatch(data.match, predicted)) {
+                resyncWithWarning('Resynced with the server — a couple of taps needed a double-check.');
+                return;
+            }
+            // Confirmed — swap in the server's copy so ids/timestamps stay
+            // authoritative. Screen already shows this, so no re-render.
+            data.match.lastBallSnapshots = match.lastBallSnapshots;
+            preserveTeamLogos(data.match, match);
+            match = data.match;
+            window.MATCH = match;
+            team = match[match.currentInnings];
+            if (redirectToSessionIfDone(match)) return;
+            if (isInningsOver(team)) {
+                window.location.href = `/turfs/live/${matchId}`;
+                return;
+            }
+            updateUndoBtn();
+        } catch (err) {
+            console.error(err);
+            resyncWithWarning('Lost the connection for a moment — resynced with the server.');
+        } finally {
+            pendingBalls = Math.max(0, pendingBalls - 1);
+        }
+    }
+
+    // Applies a ball instantly and sends it in the background, in order.
+    function queueBall(body) {
+        const fullBody = { innings: match.currentInnings, ...body };
+        const predicted = applyOptimistic(fullBody);
+        if (!predicted) {
+            alert('Something went wrong: invalid_ball');
+            return;
+        }
+        handleMatchUpdate(predicted, false);
+        pendingBalls++;
+        requestChain = requestChain.then(() => sendBallInBackground(fullBody, predicted));
+    }
 
     async function postJson(url, body) {
         const res = await fetch(url, {
@@ -17,6 +112,16 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error(data.error || 'request_failed');
         }
         return data;
+    }
+
+    const resyncMsg = (() => { try { return sessionStorage.getItem('scoreResyncMsg'); } catch (e) { return null; } })();
+    if (resyncMsg) {
+        try { sessionStorage.removeItem('scoreResyncMsg'); } catch (e) {}
+        const toast = document.createElement('div');
+        toast.className = 'score-resync-toast';
+        toast.textContent = resyncMsg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
     }
 
     function escapeHtml(str) {
@@ -245,9 +350,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleMatchUpdate(updatedMatch) {
+    function handleMatchUpdate(updatedMatch, allowRedirect = true) {
         if (!updatedMatch) return;
-        if (redirectToSessionIfDone(updatedMatch)) return;
+        if (allowRedirect && redirectToSessionIfDone(updatedMatch)) return;
 
         preserveTeamLogos(updatedMatch, match);
         match = updatedMatch;
@@ -255,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         team = match[match.currentInnings];
 
         const isSetUp = !!(team && team.strikerId && team.nonStrikerId && team.currentBowlerId);
-        if (isInningsOver(team)) {
+        if (allowRedirect && isInningsOver(team)) {
             window.location.href = `/turfs/live/${matchId}`;
             return;
         }
@@ -278,23 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Every leaf tap submits immediately — no separate Done step. This is
     // used directly for runs/dot/wide/no-ball (the branches with no
-    // further "who/what" questions attached to them).
-    async function submitDirect(body) {
-        if (isSubmitting) return;
-        isSubmitting = true;
-        scorePadGrid.style.pointerEvents = 'none';
-        try {
-            const data = await postJson(`/turfs/live/${matchId}/ball`, {
-                innings: match.currentInnings,
-                ...body,
-            });
-            handleMatchUpdate(data.match);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            isSubmitting = false;
-            scorePadGrid.style.pointerEvents = '';
-        }
+    // further "who/what" questions attached to them). Applies instantly
+    // and queues the network call — see queueBall above.
+    function submitDirect(body) {
+        queueBall(body);
     }
 
     const scorePadHeader = document.getElementById('scorePadHeader');
@@ -494,65 +586,37 @@ function abortInput() {
     // Handles every dismissal that needs more than one piece of info
     // (catch/bowled/hitwicket/stumping/retired/obstructing/runout).
     // Runs/dot/wide/no-ball never reach this — they submit via submitDirect.
-    async function submitBall() {
-        if (isSubmitting) return;
-        isSubmitting = true;
-        scorePadGrid.style.pointerEvents = 'none';
-        try {
-            let data;
-            if (outType === 'runout') {
-                data = await postJson(`/turfs/live/${matchId}/ball`, {
-                    innings: match.currentInnings,
-                    type: 'out',
-                    outType: 'runout',
-                    outPlayerId,
-                    fielderId,
-                    newBatsmanId,
-                    runoutRuns,
-                    isNoBall: isNoBallRunout,
-                });
-            } else if (outType === 'retired') {
-                data = await postJson(`/turfs/live/${matchId}/ball`, {
-                    innings: match.currentInnings,
-                    type: 'retire',
-                    outPlayerId,
-                    newBatsmanId,
-                });
-            } else if (outType === 'catch') {
-                data = await postJson(`/turfs/live/${matchId}/ball`, {
-                    innings: match.currentInnings,
-                    type: 'out',
-                    outType: 'catch',
-                    fielderId,
-                    newBatsmanId,
-                });
-            } else if (outType === 'obstructing') {
-                data = await postJson(`/turfs/live/${matchId}/ball`, {
-                    innings: match.currentInnings,
-                    type: 'out',
-                    outType: 'obstructing',
-                    outPlayerId,
-                    newBatsmanId,
-                });
-            } else {
-                // bowled / hitwicket / stumping (stumping can optionally be
-                // off a wide — penalty run, ball doesn't count as legal)
-                data = await postJson(`/turfs/live/${matchId}/ball`, {
-                    innings: match.currentInnings,
-                    type: 'out',
-                    outType,
-                    newBatsmanId,
-                    fielderId: outType === 'stumping' ? fielderId : undefined,
-                    isWide: outType === 'stumping' ? isWideStumping : undefined,
-                });
-            }
-            handleMatchUpdate(data.match);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            isSubmitting = false;
-            scorePadGrid.style.pointerEvents = '';
+    // Applies instantly and queues the network call — see queueBall above.
+    function submitBall() {
+        let body;
+        if (outType === 'runout') {
+            body = {
+                type: 'out',
+                outType: 'runout',
+                outPlayerId,
+                fielderId,
+                newBatsmanId,
+                runoutRuns,
+                isNoBall: isNoBallRunout,
+            };
+        } else if (outType === 'retired') {
+            body = { type: 'retire', outPlayerId, newBatsmanId };
+        } else if (outType === 'catch') {
+            body = { type: 'out', outType: 'catch', fielderId, newBatsmanId };
+        } else if (outType === 'obstructing') {
+            body = { type: 'out', outType: 'obstructing', outPlayerId, newBatsmanId };
+        } else {
+            // bowled / hitwicket / stumping (stumping can optionally be
+            // off a wide — penalty run, ball doesn't count as legal)
+            body = {
+                type: 'out',
+                outType,
+                newBatsmanId,
+                fielderId: outType === 'stumping' ? fielderId : undefined,
+                isWide: outType === 'stumping' ? isWideStumping : undefined,
+            };
         }
+        queueBall(body);
     }
 
     function renderScorePad() {
@@ -744,10 +808,11 @@ scorePadCloseBtn.addEventListener('click', () => {
     // Undo: steps the whole match back by exactly one ball. The backend
     // only keeps a snapshot stack, so this can go back up to 3 balls.
     async function doUndo() {
-        if (isSubmitting) return;
+        if (isBusy()) return;
         isSubmitting = true;
         scorePadUndoBtn.disabled = true;
         try {
+            await requestChain; // let any queued-but-unsent balls land first
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
             sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + match.currentInnings);
             sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + data.match.currentInnings);
@@ -762,7 +827,7 @@ scorePadCloseBtn.addEventListener('click', () => {
 
     // Tap the bowler's line to change the bowler, even mid-over.
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
-        if (!e.target.closest('.live-bowler-col .live-player-line') || isSubmitting) return;
+        if (!e.target.closest('.live-bowler-col .live-player-line') || isBusy()) return;
         const pool = team.bowling.filter((p) => String(p.id) !== String(team.currentBowlerId));
         openCardPicker(pool, 'Change Bowler', async (id) => {
             try {

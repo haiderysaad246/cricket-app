@@ -38,49 +38,37 @@ function parseCookies(req) {
     return out;
 }
 
-// In-memory cache for ultra-fast session validation on every request
-let cachedSession = null;
-let cacheInitialized = false;
-let lastTouchTime = 0;
+// The session lives ONLY in MongoDB. It used to be cached in this process's
+// memory, which breaks as soon as more than one server process/instance runs:
+// a logout handled by instance A cleared A's cache, but instance B kept its
+// stale copy and kept rejecting other logins with "only one admin at a time".
+// The collection holds at most one document, so reading it per request is cheap.
 
 async function getActiveSession() {
-    const now = Date.now();
-    if (!cacheInitialized) {
-        try {
-            const doc = await Session.findOne({});
-            cachedSession = doc ? doc.toObject() : null;
-            cacheInitialized = true;
-        } catch (err) {
-            console.error("Error reading session from DB:", err);
+    try {
+        const doc = await Session.findOne({}).lean();
+        if (!doc) return null;
+        if (Date.now() - new Date(doc.lastActive).getTime() > SESSION_TIMEOUT_MS) {
+            await Session.deleteOne({ _id: doc._id });
             return null;
         }
+        return doc;
+    } catch (err) {
+        console.error("Error reading session from DB:", err);
+        return null;
     }
-
-    if (cachedSession) {
-        const lastActiveTime = new Date(cachedSession.lastActive).getTime();
-        if (now - lastActiveTime > SESSION_TIMEOUT_MS) {
-            await destroySession(cachedSession.sessionId);
-            return null;
-        }
-        return cachedSession;
-    }
-
-    return null;
 }
 
 async function createSession(role = "admin") {
     const sessionId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(24).toString("hex");
     try {
         await Session.deleteMany({});
-        const doc = await Session.create({
+        await Session.create({
             sessionId,
             role,
             createdAt: new Date(),
             lastActive: new Date(),
         });
-        cachedSession = doc.toObject();
-        cacheInitialized = true;
-        lastTouchTime = Date.now();
         return sessionId;
     } catch (err) {
         console.error("Error creating session in DB:", err);
@@ -88,27 +76,25 @@ async function createSession(role = "admin") {
     }
 }
 
+// Only removes the session that matches, so a stale cookie can't log out
+// whoever is currently signed in.
 async function destroySession(sessionId) {
-    cachedSession = null;
-    cacheInitialized = true;
     try {
-        await Session.deleteMany({});
+        await Session.deleteOne({ sessionId });
     } catch (err) {
         console.error("Error destroying session in DB:", err);
     }
 }
 
-function touchSession(sessionId) {
+// Refresh lastActive at most once a minute. `activeSession` is the document
+// the caller already read, so no extra query is needed to decide.
+function touchSession(activeSession) {
+    if (!activeSession) return;
     const now = Date.now();
-    if (now - lastTouchTime > 60 * 1000) { // Throttle DB writes to once per minute
-        lastTouchTime = now;
-        if (cachedSession && cachedSession.sessionId === sessionId) {
-            cachedSession.lastActive = new Date(now);
-        }
-        Session.updateOne({ sessionId }, { lastActive: new Date(now) }).catch((err) => {
-            console.error("Error touching session:", err);
-        });
-    }
+    if (now - new Date(activeSession.lastActive).getTime() < 60 * 1000) return;
+    Session.updateOne({ sessionId: activeSession.sessionId }, { lastActive: new Date(now) }).catch((err) => {
+        console.error("Error touching session:", err);
+    });
 }
 
 module.exports = {

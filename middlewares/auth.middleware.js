@@ -16,7 +16,7 @@ async function attachRole(req, res, next) {
             req.isAdmin = true;
             res.locals.isAdmin = true;
             req.sessionId = sessionId;
-            touchSession(sessionId);
+            touchSession(activeSession);
         } else {
             req.isAdmin = false;
             res.locals.isAdmin = false;
@@ -38,4 +38,3 @@ function requireAdmin(req, res, next) {
 }
 
 module.exports = { attachRole, requireAdmin };
-
