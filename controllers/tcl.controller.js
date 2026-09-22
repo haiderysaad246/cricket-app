@@ -2,6 +2,7 @@ const Team = require("../models/team.model");
 const Match = require("../models/matches");
 const Tournament = require("../models/tcl.model");
 const Player = require("../models/player.model");
+const { computeMVP } = require("../utils/mvp");
 
 // ---- Points table computation (shared with points.controller.js) ----
 // Ranks teams by points (2 per win, 1 per tie), then NRR, then wins.
@@ -425,6 +426,53 @@ exports.editMatch = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.redirect("/tcl/session/" + tournamentId + "?error=edit_match_failed");
+    }
+};
+
+exports.awardTournamentTurfMVP = async (req, res) => {
+    const tournamentId = req.params.id;
+    try {
+        const tournament = await Tournament.findById(tournamentId);
+        if (!tournament) return res.redirect("/tcl?error=not_found");
+        if (tournament.turfMvpAwarded) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=turf_mvp_already_awarded");
+        }
+
+        const matches = await Match.find({ tournamentId, status: "completed" }).lean();
+        const allMatches = await Match.countDocuments({ tournamentId });
+        if (!allMatches || matches.length !== allMatches) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=matches_incomplete");
+        }
+
+        const totals = new Map();
+        for (const match of matches) {
+            for (const player of computeMVP(match)) {
+                totals.set(player.id, (totals.get(player.id) || 0) + player.totalPts);
+            }
+        }
+        const winner = [...totals.entries()].sort((a, b) => b[1] - a[1])[0];
+        if (!winner) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=turf_mvp_unavailable");
+        }
+
+        const claimed = await Tournament.findOneAndUpdate(
+            { _id: tournamentId, turfMvpAwarded: { $ne: true } },
+            { $set: { turfMvpAwarded: true } },
+            { new: true },
+        );
+        if (!claimed) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=turf_mvp_already_awarded");
+        }
+
+        const player = await Player.findByIdAndUpdate(winner[0], { $inc: { turfMvpCount: 1 } });
+        if (!player) {
+            await Tournament.updateOne({ _id: tournamentId, turfMvpAwarded: true }, { $set: { turfMvpAwarded: false } });
+            throw new Error(`turf_mvp_player_not_found:${winner[0]}`);
+        }
+        res.redirect("/tcl/session/" + tournamentId + "?turf_mvp=awarded");
+    } catch (err) {
+        console.log(err);
+        res.redirect("/tcl/session/" + tournamentId + "?error=turf_mvp_failed");
     }
 };
 

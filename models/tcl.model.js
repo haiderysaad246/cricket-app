@@ -13,6 +13,7 @@ const tournamentSchema = new Schema({
     // this number (fixtures are fixed).
     totalFixtures: { type: Number, default: null },
     status: { type: String, enum: ["active", "ended"], default: "active" },
+    turfMvpAwarded: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model("tournaments", tournamentSchema);

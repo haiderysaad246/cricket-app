@@ -46,6 +46,18 @@
                             <span>Delete Tournament</span>
                         </button>
                     </form>
+                    <details class="tcl-more-actions">
+                        <summary class="toolbar-btn" title="More tournament actions" aria-label="More tournament actions">
+                            <i class="fa-solid fa-ellipsis"></i>
+                        </summary>
+                        <form action="/tcl/session/<%= tournament._id %>/turf-mvp" method="POST"
+                              onsubmit="return confirm('Award Turf MVP for this completed tournament? This can only be done once.');">
+                            <button type="submit" class="toolbar-btn" <%= tournament.turfMvpAwarded ? 'disabled' : '' %>>
+                                <i class="fa-solid fa-star"></i>
+                                <span><%= tournament.turfMvpAwarded ? 'Turf MVP Awarded' : 'Award Turf MVP' %></span>
+                            </button>
+                        </form>
+                    </details>
                 <% } %>
             </div>
         </div>
