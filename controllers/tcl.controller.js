@@ -450,6 +450,20 @@ exports.deleteTournament = async (req, res) => {
             return res.redirect("/tcl/session/" + tournament._id + "?error=match_in_progress");
         }
 
+        // Persist completed match innings before deleting the tournament folder.
+        // The statsAggregated flag makes this safe when scoring already folded
+        // one or both innings into player profiles.
+        const { aggregateTeamStats } = require("./turf.controller");
+        const completedMatches = await Match.find({
+            tournamentId: tournament._id,
+            status: "completed",
+        });
+        for (const match of completedMatches) {
+            await aggregateTeamStats(match, "team1");
+            await aggregateTeamStats(match, "team2");
+            await match.save();
+        }
+
         await Match.deleteMany({ tournamentId: tournament._id });
         await Tournament.findByIdAndDelete(tournament._id);
         res.redirect("/tcl");
