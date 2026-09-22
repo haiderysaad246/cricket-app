@@ -49,12 +49,12 @@ function respond(req, res, { json, redirect, status = 200 }) {
     if (req.headers.accept?.includes("application/json")) {
         return res.status(json?.error ? (status === 200 ? 400 : status) : status).json(json ?? { ok: true });
     }
-    function matchForBallResponse(match) {
-        const json = match.toObject ? match.toObject() : JSON.parse(JSON.stringify(match));
-        delete json.lastBallSnapshots;
-        return json;
-    }
     return res.redirect(redirect);
+}
+function matchForBallResponse(match) {
+    const json = match.toObject ? match.toObject() : JSON.parse(JSON.stringify(match));
+    delete json.lastBallSnapshots;
+    return json;
 }
 exports.index = async (req, res) => {
     const wantsJson = req.headers.accept?.includes("application/json");
@@ -458,7 +458,13 @@ async function applyTeamStats(match, team, statsKey) {
         if (row.status === "yet_to_bat") return;
         const player = await Player.findById(row.id);
         if (!player) return;
-        const b = player[statsKey].batting;
+        const statBlock = player[statsKey] || {};
+        const b = statBlock.batting || {};
+        for (const field of ["matches", "innings", "runs", "ballsFaced", "dots", "fours", "sixes", "ducks", "highest"]) {
+            if (!Number.isFinite(b[field])) b[field] = 0;
+        }
+        player[statsKey] = statBlock;
+        statBlock.batting = b;
         const prevTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
         const timesOut = row.status === "out" ? 1 : 0;
         const newTimesOut = prevTimesOut + timesOut;
@@ -483,7 +489,13 @@ async function applyTeamStats(match, team, statsKey) {
         if (!row.balls && !row.runs && !row.wickets) return;
         const player = await Player.findById(row.id);
         if (!player) return;
-        const bw = player[statsKey].bowling;
+        const statBlock = player[statsKey] || {};
+        const bw = statBlock.bowling || {};
+        for (const field of ["innings", "wickets", "ballsBowled", "dots", "runsConceded", "maidens", "hatTricks", "overs"]) {
+            if (!Number.isFinite(bw[field])) bw[field] = 0;
+        }
+        player[statsKey] = statBlock;
+        statBlock.bowling = bw;
         bw.innings += 1;
         bw.wickets += row.wickets || 0;
         bw.ballsBowled += row.balls || 0;
@@ -691,6 +703,10 @@ exports.recordBall = async (req, res) => {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
         const { innings, type } = req.body;
+        if (!["team1", "team2"].includes(innings)) {
+            return res.status(400).json({ error: "invalid_innings" });
+        }
+        if (!type) return res.status(400).json({ error: "invalid_ball_type" });
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
         // Snapshot for undo — captured before any mutation, using the
@@ -727,8 +743,14 @@ exports.recordBall = async (req, res) => {
         if (justCompleted) await tryCreatePlayoffs(match);
         res.json({ ok: true, match: matchForBallResponse(match) });
     } catch (err) {
-        console.log(err);
-        res.status(400).json({ error: "ball_failed" });
+        console.error("record_ball_failed", {
+            matchId: req.params.id,
+            innings: req.body && req.body.innings,
+            type: req.body && req.body.type,
+            message: err.message,
+            stack: err.stack,
+        });
+        res.status(500).json({ error: "ball_failed" });
     }
 };
 // Rolls every match played in this turf into each player's turfStats,

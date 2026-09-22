@@ -31,6 +31,8 @@ const zeroStatBlock = {
         average: 0,
         economyRate: 0,
         strikeRate: 0,
+        maidens: 0,
+        hatTricks: 0,
     },
 };
 

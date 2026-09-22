@@ -61,7 +61,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(body),
             });
             const data = await res.json();
-            if (!res.ok || !data.ok) throw new Error(data.error || 'request_failed');
+            if (!res.ok || !data.ok) {
+                const error = data.error || `request_failed_${res.status}`;
+                throw new Error(error);
+            }
             if (!statesMatch(data.match, predicted)) {
                 resyncWithWarning('Resynced with the server — a couple of taps needed a double-check.');
                 return;
@@ -80,8 +83,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             updateUndoBtn();
         } catch (err) {
-            console.error(err);
-            resyncWithWarning('Lost the connection for a moment — resynced with the server.');
+            console.error('score_request_failed', err);
+            resyncWithWarning(
+                err.message === 'match_not_found'
+                    ? 'This match has already ended — refreshing the score.'
+                    : `Score was resynced after ${err.message || 'a server error'}.`
+            );
         } finally {
             pendingBalls = Math.max(0, pendingBalls - 1);
         }
