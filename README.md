@@ -34,10 +34,11 @@ Player profiles preserve cumulative Turf statistics, including TCL performances.
 Screenshots are not currently included in the repository. Add captures to `docs/screenshots/` and embed them here before publishing, for example:
 
 ```md
-![Players](docs/screenshots/players.png)
-![Team management](docs/screenshots/teams.png)
-![Live scoring](docs/screenshots/live-scoring.png)
-![TCL tournament](docs/screenshots/tcl.png)
+![livescore](docs/screenshots/livescore.png)
+![Players](docs/screenshots/players)
+![scorepage](docs/screenshots/scorepage.png)
+![TCL tournament](docs/screenshots/tclfolder.png)
+![tcl](docs/screenshots/tcl.png)
 ```
 
 Suggested captures: Players, a player profile, team creation/player selection, a live scorecard with Full Records, and a TCL tournament/points table. Avoid including private player information or credentials in screenshots.
