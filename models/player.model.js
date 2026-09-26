@@ -26,7 +26,7 @@ const bowlingStatsSchema = new Schema({
     runsConceded: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
     dotBallPercentage: { type: Number, default: 0 },
-    noBallRuns: { type: Number, default: 0 },
+    noBalls: { type: Number, default: 0 },
     wideRuns: { type: Number, default: 0 },
     average: { type: Number, default: 0 },
     economyRate: { type: Number, default: 0 },
@@ -68,8 +68,6 @@ const playerSchema = new Schema({
     },
     // Normal weekend turf stats
     turfStats: { type: statBlockSchema, default: () => ({}) },
-    // Turf Cricket League (tournament) stats — tracked separately from turf stats
-    tclStats: { type: statBlockSchema, default: () => ({}) },
     // How many single matches this player was crowned MVP of (top of that
     // match's MVP points table).
     matchMvpCount: { type: Number, default: 0 },

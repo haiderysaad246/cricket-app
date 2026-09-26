@@ -26,7 +26,7 @@ const zeroStatBlock = {
         runsConceded: 0,
         dots: 0,
         dotBallPercentage: 0,
-        noBallRuns: 0,
+        noBalls: 0,
         wideRuns: 0,
         average: 0,
         economyRate: 0,
@@ -45,10 +45,10 @@ async function run() {
         {
             $set: {
                 turfStats: zeroStatBlock,
-                tclStats: zeroStatBlock,
                 matchMvpCount: 0,
                 turfMvpCount: 0,
             },
+            $unset: { tclStats: 1 },
         }
     );
 

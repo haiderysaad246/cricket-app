@@ -169,6 +169,8 @@ async function maybeCreateSuperOver(match) {
     if (!match || !match.tournamentId) return;
     if (match.status !== "completed" || match.result !== "Match Tied") return;
     if (match.superOverMatchId) return;
+    const tournament = await Tournament.findById(match.tournamentId).select("allowSuperOver").lean();
+    if (!tournament || !tournament.allowSuperOver) return;
     const secondBattingKey = match.battingFirst === "team1" ? "team2" : "team1";
     const created = await createPlayoffMatch(
         match.tournamentId, match.team1TeamId, match.team2TeamId, 1, "superover",
@@ -265,7 +267,7 @@ exports.index = async (req, res) => {
     }
 };
 
-// Creates an empty tournament folder — just name/date/timing. Fixtures
+// Creates an empty tournament folder — just name/date and its tie rule. Fixtures
 // (team vs team) get added afterwards from the session page.
 exports.createTournament = async (req, res) => {
     try {
@@ -276,7 +278,7 @@ exports.createTournament = async (req, res) => {
         const tournament = await Tournament.create({
             name,
             date: (req.body.date || "").trim() || null,
-            timing: (req.body.timing || "").trim() || null,
+            allowSuperOver: req.body.allowSuperOver === "on",
             totalFixtures: Number.isFinite(totalFixturesNum) && totalFixturesNum > 0 ? totalFixturesNum : null,
         });
         res.redirect("/tcl/session/" + tournament._id);

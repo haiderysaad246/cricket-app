@@ -56,6 +56,94 @@ function matchForBallResponse(match) {
     delete json.lastBallSnapshots;
     return json;
 }
+function playerName(team, id) {
+    const row = (team.batting || []).concat(team.bowling || []).find((p) => String(p.id) === String(id));
+    return row ? row.name : "Unknown player";
+}
+function ballSentence(team, body) {
+    const striker = playerName(team, team.strikerId);
+    const nonStriker = playerName(team, team.nonStrikerId);
+    const bowler = playerName(team, team.currentBowlerId);
+    const type = body.type;
+    const ordinal = (number) => {
+        const last = number % 10;
+        const lastTwo = number % 100;
+        if (last === 1 && lastTwo !== 11) return `${number}st`;
+        if (last === 2 && lastTwo !== 12) return `${number}nd`;
+        if (last === 3 && lastTwo !== 13) return `${number}rd`;
+        return `${number}th`;
+    };
+    const runAttempt = (number) => number === 1 ? "a run" : `${ordinal(number)} run`;
+    const runningSentence = (runs, name = striker) => {
+        if (runs === 1) return `${name} hits 1 run by running and gave strike to ${nonStriker}`;
+        if (runs % 2 === 0) return `${name} hits ${runs} runs by running and keep the strike`;
+        return `${name} hits ${runs} runs by running and gave the strike to ${nonStriker}`;
+    };
+    const numberWord = (number) => ({
+        1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+    }[number] || String(number));
+    const noBallRunningSentence = (runs) => {
+        const amount = numberWord(runs);
+        if (runs % 2 === 0) return `${striker} hits ${amount} runs and keep the strike`;
+        return `${striker} hits ${amount} run${runs === 1 ? "" : "s"} and gave strike to ${nonStriker}`;
+    };
+    if (type === "retire") {
+        return `${playerName(team, body.outPlayerId)} was retired out by the captain ${team.captainName || "captain"}`;
+    }
+    if (type === "wide") {
+        const runs = 1 + Math.max(0, Number(body.wideRuns || 0));
+        return `${bowler} bowls a ${runs} wide${runs === 1 ? "" : "s"}`;
+    }
+    if (type === "noball") {
+        const runs = Math.max(0, Number(body.noballRuns || 0));
+        if (body.noballBoundary === "four") return `${bowler} bowls a no ball and ${striker} hits a four`;
+        if (body.noballBoundary === "six") return `${bowler} bowls a no ball and ${striker} hits a six`;
+        if (runs === 0) return `${bowler} bowls a dot with no ball`;
+        return `${bowler} bowls a no ball and ${noBallRunningSentence(runs)}`;
+    }
+    if (type === "out") {
+        const out = playerName(team, body.outPlayerId || team.strikerId);
+        const fielder = body.fielderId ? playerName(team, body.fielderId) : "the fielder";
+        const runs = Math.max(0, Number(body.runoutRuns || 0));
+        if (body.outType === "runout") {
+            const runningFor = `while they were running for ${runAttempt(body.isNoBall ? runs + 1 : Math.max(1, runs))}`;
+            return `${body.isNoBall ? `${bowler} bowls a no ball and ` : ""}${out} was run out by ${fielder} ${runningFor}`;
+        }
+        if (body.outType === "catch") return `${out} hits a shot and caught by ${fielder} and ${bowler} got a wicket`;
+        if (body.outType === "stumping") {
+            if (body.isWide) return `${bowler} bowls a wide and ${fielder} stumped him and ${bowler} got a wicket with wide`;
+            return `${out} got stumped by ${fielder} and ${bowler} got a wicket`;
+        }
+        if (body.outType === "bowled") return `${out} bowled by ${bowler}`;
+        if (body.outType === "hitwicket") return `${out} was given out for hit wicket`;
+        if (body.outType === "obstructing") return `${out} was given out for obstructing the field`;
+        return `${out} was given out`;
+    }
+    if (type === "runs_extra") return runningSentence(Number(body.runs || 0));
+    const runs = { dot: 0, one: 1, two: 2, three: 3, five: 5, seven: 7, eight: 8, nine: 9, ten: 10 }[type];
+    if (type === "four") return `${striker} hits four to ${bowler}`;
+    if (type === "six") return `${striker} hits six to ${bowler}`;
+    if (type === "one_nr") return `${striker} hits one D to ${bowler}`;
+    if (runs != null) return runs === 0 ? `${bowler} bowled a dot ball to ${striker}` : runningSentence(runs);
+    return `${striker}: ${String(type || "unknown").replace(/_/g, " ")}`;
+}
+function appendBallEvent(match, innings, body, beforeTeam) {
+    if (!match.ballEvents) match.ballEvents = [];
+    const legalBalls = beforeTeam.legalBalls || 0;
+    match.ballEvents.push({
+        innings,
+        over: Math.floor(legalBalls / 6) + 1,
+        ball: legalBalls % 6 + 1,
+        legal: body.type !== "retire" && body.type !== "wide" && body.type !== "noball" &&
+            !(body.type === "out" && body.isWide) && !(body.type === "out" && body.isNoBall),
+        sentence: ballSentence(beforeTeam, body),
+        payload: JSON.parse(JSON.stringify(body)),
+        striker: playerName(beforeTeam, beforeTeam.strikerId),
+        bowler: playerName(beforeTeam, beforeTeam.currentBowlerId),
+        createdAt: new Date(),
+    });
+    match.markModified("ballEvents");
+}
 exports.index = async (req, res) => {
     const wantsJson = req.headers.accept?.includes("application/json");
     try {
@@ -436,23 +524,14 @@ function maybeDeclareResult(match) {
 // calling it repeatedly (e.g. once per ball) after the innings is already
 // done is a harmless no-op.
 //
-// Stat routing per the product rules:
-//   - turfStats is the OVERALL record (every match, turf AND tcl combined),
-//     so it always receives this innings' stats.
-//   - tclStats is the TCL-only record, so it only receives stats when the
-//     match is a tournament fixture (match.tournamentId is set).
 async function aggregateTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || team.statsAggregated) return;
-    const keys = match.tournamentId ? ["turfStats", "tclStats"] : ["turfStats"];
-    for (const statsKey of keys) {
-        await applyTeamStats(match, team, statsKey);
-    }
+    await applyTeamStats(match, team, "turfStats");
     team.statsAggregated = true;
 }
 
-// Applies one team's batting+bowling rows from a match into the given
-// stat block (either "turfStats" or "tclStats") on every affected player.
+// Applies one team's batting+bowling rows from a match into turfStats.
 async function applyTeamStats(match, team, statsKey) {
     await Promise.all(team.batting.map(async (row) => {
         if (row.status === "yet_to_bat") return;
@@ -488,6 +567,7 @@ async function applyTeamStats(match, team, statsKey) {
                 [`${statsKey}.bowling.wickets`]: row.wickets || 0,
                 [`${statsKey}.bowling.ballsBowled`]: row.balls || 0,
                 [`${statsKey}.bowling.dots`]: row.dots || 0,
+                [`${statsKey}.bowling.noBalls`]: row.noBalls || 0,
                 [`${statsKey}.bowling.runsConceded`]: row.runs || 0,
                 [`${statsKey}.bowling.maidens`]: row.maidens || 0,
                 [`${statsKey}.bowling.hatTricks`]: row.hatTrick ? 1 : 0,
@@ -522,7 +602,7 @@ async function aggregatePendingInningsStats(match) {
 async function reverseTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || !team.statsAggregated) return;
-    const keys = match.tournamentId ? ["turfStats", "tclStats"] : ["turfStats"];
+    const keys = ["turfStats"];
     for (const statsKey of keys) {
         for (const row of team.batting) {
             if (row.status === "yet_to_bat") continue;
@@ -655,6 +735,7 @@ exports.undoLastBall = async (req, res) => {
             await reverseTeamStats(match, snap.innings);
         }
         match[snap.innings] = snap.team;
+        if (match.ballEvents && match.ballEvents.length) match.ballEvents.pop();
         match.currentInnings = snap.currentInnings;
         match.markModified(snap.innings);
         match.markModified("lastBallSnapshots");
@@ -723,8 +804,10 @@ exports.recordBall = async (req, res) => {
         // All the actual scoring rules live in public/js/ballRules.js now —
         // the same file the browser uses for optimistic scoring — so the
         // two can never drift apart.
+        const beforeTeam = JSON.parse(JSON.stringify(team));
         const result = applyBall(match, innings, req.body);
         if (!result.ok) return res.status(400).json({ error: result.error });
+        appendBallEvent(match, innings, req.body, beforeTeam);
 
         if (type !== "retire") {
             await aggregatePendingInningsStats(match);

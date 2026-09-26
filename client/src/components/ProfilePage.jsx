@@ -6,7 +6,6 @@ import StatBlock from "./StatBlock";
 export default function ProfilePage() {
   const { id } = useParams();
   const [player, setPlayer] = useState(null);
-  const [tab, setTab] = useState("turf");
 
   useEffect(() => { api.getPlayer(id).then(setPlayer); }, [id]);
 
@@ -43,8 +42,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="stats-tabs">
-        <button type="button" className={`stats-tab ${tab === "turf" ? "active" : ""}`} onClick={() => setTab("turf")}>Turf</button>
-        <button type="button" className={`stats-tab ${tab === "tcl" ? "active" : ""}`} onClick={() => setTab("tcl")}>TCL</button>
+        <button type="button" className="stats-tab active">Turf Stats</button>
       </div>
 
       <div className="stats-section">
@@ -57,7 +55,7 @@ export default function ProfilePage() {
 
       <div className="stats-columns">
         <div className="stats-column active-panel">
-          <StatBlock stats={tab === "turf" ? player.turfStats : player.tclStats} />
+          <StatBlock stats={player.turfStats} />
         </div>
       </div>
     </div>

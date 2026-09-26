@@ -18,8 +18,8 @@
                 <i class="fa-solid fa-trophy resume-match-icon"></i>
                 <div>
                     <div class="resume-match-title"><%= tournament.name %></div>
-                    <% if (tournament.date || tournament.timing) { %>
-                        <div class="resume-match-sub"><%= [tournament.date, tournament.timing].filter(Boolean).join(' · ') %></div>
+                    <% if (tournament.date) { %>
+                        <div class="resume-match-sub"><%= tournament.date %></div>
                     <% } %>
                 </div>
             </div>

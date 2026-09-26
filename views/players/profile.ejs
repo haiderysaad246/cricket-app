@@ -33,7 +33,6 @@
 
         <div class="stats-tabs">
             <button type="button" class="stats-tab active" data-tab="turf">turf stats</button>
-            <button type="button" class="stats-tab" data-tab="tcl">tcl</button>
         </div>
 
         <div class="stats-section">
@@ -46,18 +45,8 @@
 
         <div class="stats-columns">
 
-            <!-- TURF STATS: turfStats already includes every TCL match too
-                 (see applyTeamStats in turf.controller.js — a TCL match writes
-                 into both turfStats and tclStats), so this is the true overall
-                 record. Render it directly; do NOT add tclStats on top or every
-                 TCL contribution gets double-counted. -->
             <div class="stats-column active-panel" data-tab-panel="turf">
                 <%- include('../includes/stat-block.ejs', { stats: player.turfStats || { batting: {}, bowling: {} }, player: player }) %>
-            </div>
-
-            <!-- TCL: only tcl stats -->
-            <div class="stats-column" data-tab-panel="tcl">
-                <%- include('../includes/stat-block.ejs', { stats: player.tclStats || { batting: {}, bowling: {} }, player: player }) %>
             </div>
 
         </div>

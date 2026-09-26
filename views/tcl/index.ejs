@@ -26,8 +26,8 @@
                             <i class="fa-solid fa-trophy fixture-card-folder-icon"></i>
                             <div class="fixture-card-title"><%= t.name %></div>
                         </div>
-                        <% if (t.date || t.timing) { %>
-                            <div class="fixture-card-meta"><%= [t.date, t.timing].filter(Boolean).join(' · ') %></div>
+                        <% if (t.date) { %>
+                            <div class="fixture-card-meta"><%= t.date %></div>
                         <% } %>
                     </a>
                 <% }) %>
@@ -51,8 +51,16 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="tournamentTiming">Timing</label>
-                    <input type="time" name="timing" id="tournamentTiming" autocomplete="off">
+                    <label class="tcl-toggle-row" for="allowSuperOver">
+                        <span>
+                            <strong>Allow Super Over</strong>
+                            <small class="form-hint">Create a Super Over when a TCL match is tied.</small>
+                        </span>
+                        <span class="tcl-toggle">
+                            <input type="checkbox" name="allowSuperOver" id="allowSuperOver">
+                            <span class="tcl-toggle-slider"></span>
+                        </span>
+                    </label>
                 </div>
 
                 <div class="form-group">

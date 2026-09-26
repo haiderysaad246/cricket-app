@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cur.innerHTML = next.innerHTML;
                 return true;
             };
-            const ids = ['liveViewSummary', 'innings-players', 'innings-team1', 'innings-team2'];
+            const ids = ['liveViewSummary', 'innings-players', 'innings-team1', 'innings-team2', 'innings-records'];
             if (!ids.every(swap)) return false;
             window.MATCH = freshMatch;
             document.dispatchEvent(new CustomEvent('match:updated', { detail: freshMatch }));

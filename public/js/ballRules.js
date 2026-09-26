@@ -142,6 +142,7 @@
             const total = 1 + nbRuns;
             team.totalRuns += total;
             team.extraNoBalls += 1;
+            bowler.noBalls = (bowler.noBalls || 0) + 1;
             bowler.runs += total;
             striker.balls += 1;
             team.currentOverBalls.push(nbRuns ? `nb+${nbRuns}` : "nb");

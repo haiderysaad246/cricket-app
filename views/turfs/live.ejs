@@ -77,6 +77,7 @@
             <button type="button" class="scorecard-tab <%= match.currentInnings === firstInningsKey ? 'active' : '' %>" data-innings="<%= firstInningsKey %>">1st Innings</button>
             <button type="button" class="scorecard-tab <%= match.currentInnings === secondInningsKey ? 'active' : '' %>" data-innings="<%= secondInningsKey %>">2nd Innings</button>
             <button type="button" class="scorecard-tab" data-innings="mvp"><i class="fa-solid fa-star"></i> MVP</button>
+            <button type="button" class="scorecard-tab" data-innings="records"><i class="fa-solid fa-list"></i> Full Records</button>
         </div>
 
         <div class="scorecard-innings" id="innings-players" style="display:none;">
@@ -151,6 +152,84 @@
 
         <div class="scorecard-innings" id="innings-mvp" style="display:none;">
             <div id="mvpPanelContent"></div>
+        </div>
+
+        <div class="scorecard-innings" id="innings-records" style="display:none;">
+            <div class="scorecard-block full-records">
+                <h3 class="scorecard-section-title">Full Records</h3>
+                <% const events = match.ballEvents || []; %>
+                <% const recordBallValue = (event) => {
+                    const payload = event.payload || {};
+                    if (payload.type === 'dot') return '0';
+                    if (payload.type === 'one' || payload.type === 'one_nr') return '1';
+                    if (payload.type === 'two') return '2';
+                    if (payload.type === 'three') return '3';
+                    if (payload.type === 'four') return '4';
+                    if (payload.type === 'five') return '5';
+                    if (payload.type === 'six') return '6';
+                    if (payload.type === 'runs_extra') return String(payload.runs || 0);
+                    if (payload.type === 'wide') {
+                        const count = event.wideCount || (1 + Math.max(0, Number(payload.wideRuns || 0)));
+                        return count === 1 ? 'wd' : `wd+${count - 1}`;
+                    }
+                    if (payload.type === 'noball') return `nb${payload.noballRuns ? `+${payload.noballRuns}` : ''}`;
+                    if (payload.type === 'out') return payload.isNoBall ? 'nb+W' : (payload.isWide ? 'wd+W' : 'W');
+                    return '•';
+                }; %>
+                <% const recordBallClass = (value) => value.toLowerCase().startsWith('wd') ? 'is-wide' : (value.toLowerCase().startsWith('nb') ? 'is-no-ball' : (value.toLowerCase() === 'w' ? 'is-wicket' : '')); %>
+                <% const collapseWideEvents = (events) => {
+                    const collapsed = [];
+                    for (const event of events) {
+                        const payload = event.payload || {};
+                        const previous = collapsed[collapsed.length - 1];
+                        if (payload.type === 'wide' && previous && previous.payload && previous.payload.type === 'wide' &&
+                            previous.over === event.over && previous.ball === event.ball) {
+                            previous.wideCount += 1 + Math.max(0, Number(payload.wideRuns || 0));
+                            previous.sentence = `${previous.bowler || 'Bowler'} bowls ${previous.wideCount} wides`;
+                            continue;
+                        }
+                        collapsed.push({
+                            ...event,
+                            payload,
+                            wideCount: payload.type === 'wide' ? 1 + Math.max(0, Number(payload.wideRuns || 0)) : 0,
+                        });
+                    }
+                    for (const event of collapsed) {
+                        if (event.payload.type === 'wide' && event.wideCount === 1) {
+                            event.sentence = `${event.bowler || 'Bowler'} bowls a wide`;
+                        }
+                    }
+                    return collapsed;
+                }; %>
+                <% for (const inningsKey of [firstInningsKey, secondInningsKey]) { %>
+                    <% const inningsEvents = collapseWideEvents(events.filter((event) => event.innings === inningsKey)); %>
+                    <section class="records-innings">
+                        <h4><%= match[inningsKey].name %> — <%= inningsKey === firstInningsKey ? '1st' : '2nd' %> innings</h4>
+                        <% const overs = [...new Set(inningsEvents.map((event) => event.over))]; %>
+                        <% if (!overs.length) { %><p class="records-empty">No deliveries recorded yet.</p><% } %>
+                        <% for (const over of overs) { %>
+                            <div class="records-over">
+                                <% const overEvents = inningsEvents.filter((item) => item.over === over); %>
+                                <div class="records-over-heading">
+                                    <strong>Over <%= over %></strong>
+                                    <div class="live-over-balls" aria-label="Over ball results">
+                                        <% for (const event of overEvents) { %>
+                                            <% const value = recordBallValue(event); %>
+                                            <span class="over-ball-chip <%= recordBallClass(value) %>"><%= value %></span>
+                                        <% } %>
+                                    </div>
+                                </div>
+                                <ol>
+                                    <% for (const event of overEvents) { %>
+                                        <li><span class="records-ball"><%= event.legal ? `${over}.${event.ball}` : `${over}.${event.ball}*` %></span><%= event.sentence %></li>
+                                    <% } %>
+                                </ol>
+                            </div>
+                        <% } %>
+                    </section>
+                <% } %>
+                <% if (!events.length) { %><p class="records-empty">Ball-by-ball records will appear here as scoring begins.</p><% } %>
+            </div>
         </div>
     </div>
 

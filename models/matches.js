@@ -8,6 +8,7 @@ const battingRowSchema = new Schema({
     isCaptain: { type: Boolean, default: false },
     runs: { type: Number, default: 0 },
     balls: { type: Number, default: 0 },
+    noBalls: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
     fours: { type: Number, default: 0 },
     sixes: { type: Number, default: 0 },
@@ -72,6 +73,10 @@ const matchSchema = new Schema({
     team1TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     team2TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     lastBallSnapshots: { type: [Schema.Types.Mixed], default: [] },
+    // Immutable delivery audit trail used by the live match Full Records tab.
+    // Keep the original request payload so every scoring option remains
+    // reconstructable even when a new event type is added.
+    ballEvents: { type: [Schema.Types.Mixed], default: [] },
     // Set once Match MVP has been awarded for this match, so it's never
     // double-awarded if match completion gets touched by more than one
     // save (e.g. a ball that ends the match, then a later route call).

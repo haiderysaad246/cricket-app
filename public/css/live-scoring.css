@@ -424,6 +424,17 @@
     box-shadow: var(--shadow-card);
 }
 
+.full-records { max-width: 900px; margin-left: auto; margin-right: auto; }
+.records-innings { border-top: 1px solid var(--border-faint); padding-top: 14px; margin-top: 14px; }
+.records-innings h4 { margin: 0 0 10px; color: var(--color-text); }
+.records-over { background: var(--color-ink-light); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.records-over-heading { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
+.records-over-heading .live-over-balls { margin-left: auto; }
+.records-over ol { margin: 7px 0 0; padding-left: 4.5rem; }
+.records-over li { padding: 4px 0; color: var(--color-text-soft); }
+.records-ball { display: inline-block; min-width: 3.5rem; margin-left: -3.5rem; color: var(--color-accent); font-weight: 700; }
+.records-empty { color: var(--color-text-muted); margin: 8px 0; }
+
 .players-panel {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

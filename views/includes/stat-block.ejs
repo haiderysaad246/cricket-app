@@ -20,12 +20,12 @@
         <div class="stat-item"><span class="stat-label">Maidens</span><span class="stat-value"><%= stats.bowling.maidens || 0 %></span></div>
         <div class="stat-item"><span class="stat-label">Hat-tricks</span><span class="stat-value"><%= stats.bowling.hatTricks || 0 %></span></div>
         <div class="stat-item"><span class="stat-label">Innings</span><span class="stat-value"><%= stats.bowling.innings %></span></div>
-        <div class="stat-item"><span class="stat-label">No Ball Runs</span><span class="stat-value"><%= stats.bowling.noBallRuns %></span></div>
+        <div class="stat-item"><span class="stat-label">Average No Balls / Over</span><span class="stat-value"><%= stats.bowling.ballsBowled > 0 ? ((stats.bowling.noBalls || 0) * 6 / stats.bowling.ballsBowled).toFixed(2) : '0.00' %></span></div>
         <div class="stat-item"><span class="stat-label">Overs</span><span class="stat-value"><%= stats.bowling.overs %></span></div>
         <div class="stat-item"><span class="stat-label">Wide Runs</span><span class="stat-value"><%= stats.bowling.wideRuns %></span></div>
         <div class="stat-item"><span class="stat-label">Ball Bowled</span><span class="stat-value"><%= stats.bowling.ballsBowled %></span></div>
         <div class="stat-item"><span class="stat-label">Average</span><span class="stat-value"><%= stats.bowling.average %></span></div>
-        <div class="stat-item"><span class="stat-label">Runs Conceded</span><span class="stat-value"><%= stats.bowling.runsConceded %></span></div>
+        <div class="stat-item"><span class="stat-label">Average Runs / Over</span><span class="stat-value"><%= stats.bowling.ballsBowled > 0 ? ((stats.bowling.runsConceded || 0) * 6 / stats.bowling.ballsBowled).toFixed(2) : '0.00' %></span></div>
         <div class="stat-item"><span class="stat-label">Economy Rate</span><span class="stat-value"><%= stats.bowling.economyRate %></span></div>
         <div class="stat-item"><span class="stat-label">Average Dots / Over</span><span class="stat-value"><%= stats.bowling.ballsBowled > 0 ? ((stats.bowling.dots || 0) * 6 / stats.bowling.ballsBowled).toFixed(2) : '0.00' %></span></div>
         <div class="stat-item"><span class="stat-label">Strike Rate</span><span class="stat-value"><%= stats.bowling.strikeRate %></span></div>

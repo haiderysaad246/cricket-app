@@ -2,7 +2,7 @@ const Player = require("../models/player.model");
 const { deleteImageFile } = require("../utils/fileHelper");
 
 const BATTING_FIELDS = ["runs", "matches", "innings", "average", "strikeRate", "highest", "ducks", "ballsFaced", "dots", "fours", "sixes"];
-const BOWLING_FIELDS = ["wickets", "innings", "overs", "ballsBowled", "runsConceded", "dots", "dotBallPercentage", "noBallRuns", "wideRuns", "average", "economyRate", "strikeRate"];
+const BOWLING_FIELDS = ["wickets", "innings", "overs", "ballsBowled", "runsConceded", "dots", "dotBallPercentage", "noBalls", "wideRuns", "average", "economyRate", "strikeRate"];
 
 // Turns a raw { batting: {...}, bowling: {...} } chunk of req.body into a
 // clean stat block, coercing every value to a number (defaulting to 0).
