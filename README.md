@@ -1,10 +1,15 @@
-# Turf Cricket Manager
+# 🏏 Turf Cricket Manager
 
 A full-stack web application for managing **Turf Cricket** players, teams, matches, and TCL tournaments. It combines player and team administration with live ball-by-ball scoring, scorecards, match records, player statistics, points tables, and MVP awards.
 
-> **Built for Turf Cricket.** Scoring and match behavior follow this app's Turf Cricket format and are not intended to implement the laws or formats of international cricket.
+![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-Frontend-61DAFB?logo=react&logoColor=black)
+![MongoDB](https://img.shields.io/badge/MongoDB-Database-47A248?logo=mongodb&logoColor=white)
+![License](https://img.shields.io/badge/License-ISC-blue.svg)
 
-## Overview
+> 🏟️ **Built for Turf Cricket.** Scoring and match behavior follow this app's Turf Cricket format and are not intended to implement the laws or formats of international cricket.
+
+## ✨ Overview
 
 Administrators can create player profiles and teams, schedule normal Turf matches or TCL tournament fixtures, and score matches live from a browser. Public pages allow people to view players, teams, tournament fixtures, points, scorecards, and live match information.
 
@@ -12,24 +17,24 @@ Live scoring is designed to feel immediate: the browser applies a ball to the vi
 
 Player profiles preserve cumulative Turf statistics, including TCL performances. Match records can be removed when folders or tournaments are deleted, while completed match statistics are saved to profiles first. Match MVP is awarded per match; Turf MVP is awarded once for a complete Turf session or TCL tournament.
 
-## Key Features
+## 🚀 Key Features
 
-- **Player management:** profiles, images, roles, handedness, and career statistics.
-- **Team management:** team rosters, logos, captain selection, and a player picker that promotes search matches without hiding the full player list.
-- **Turf sessions:** create sessions, configure teams and overs, and manage multiple matches.
-- **TCL tournaments:** create tournament folders, schedule fixtures, track match stages, and display tournament information.
-- **Live scoring:** record Turf-format runs, boundaries, wides, no-balls, wickets, run-outs, retirements, and other supported scoring events.
-- **Optimistic scoring UI:** score updates render immediately, while persistence requests are processed in order.
-- **Shared scoring rules:** browser and server use the same rules module to reduce differences in score calculation.
-- **Scorecards and Full Records:** view innings, player details, MVP information, and persisted ball-by-ball records grouped by innings and over.
-- **Points and progression:** tournament points tables, playoff progression, and optional Super Overs where enabled for a TCL tournament.
-- **Player statistics:** combined Turf career statistics include Turf and TCL performances; there is no separate TCL profile-stat block.
-- **MVP awards:** Match MVP is awarded per match; Turf MVP is awarded once for the whole session/tournament.
-- **Persistent history:** completed match statistics are aggregated before Turf sessions or TCL tournaments are deleted.
-- **Single administrator session:** administrative operations require the shared admin login.
-- **Image uploads:** player photos and team logos are uploaded to Cloudinary.
+- 👤 **Player management:** profiles, images, roles, handedness, and career statistics.
+- 🛡️ **Team management:** team rosters, logos, captain selection, and a player picker that promotes search matches without hiding the full player list.
+- 🏏 **Turf sessions:** create sessions, configure teams and overs, and manage multiple matches.
+- 🏆 **TCL tournaments:** create tournament folders, schedule fixtures, track match stages, and display tournament information.
+- ⚡ **Live scoring:** record Turf-format runs, boundaries, wides, no-balls, wickets, run-outs, retirements, and other supported scoring events.
+- ⚡ **Optimistic scoring UI:** score updates render immediately, while persistence requests are processed in order.
+- 🔄 **Shared scoring rules:** browser and server use the same rules module to reduce differences in score calculation.
+- 📋 **Scorecards and Full Records:** view innings, player details, MVP information, and persisted ball-by-ball records grouped by innings and over.
+- 📈 **Points and progression:** tournament points tables, playoff progression, and optional Super Overs where enabled for a TCL tournament.
+- 📊 **Player statistics:** combined Turf career statistics include Turf and TCL performances; there is no separate TCL profile-stat block.
+- 🌟 **MVP awards:** Match MVP is awarded per match; Turf MVP is awarded once for the whole session/tournament.
+- 💾 **Persistent history:** completed match statistics are aggregated before Turf sessions or TCL tournaments are deleted.
+- 🔐 **Single administrator session:** administrative operations require the shared admin login.
+- 🖼️ **Image uploads:** player photos and team logos are uploaded to Cloudinary.
 
-## Screenshots
+## 📸 Screenshots
 
 ### Players
 
@@ -53,7 +58,7 @@ Player profiles preserve cumulative Turf statistics, including TCL performances.
 
 These images are embedded from the `docs/screenshots/` directory. Avoid including passwords, credentials, or private player information in screenshots.
 
-## Architecture
+## 🏗️ Architecture
 
 ```mermaid
 flowchart LR
@@ -83,7 +88,7 @@ flowchart LR
 - **Shared scoring rules** are in `public/js/ballRules.js` and are used by browser scoring and the server.
 - **Cloudinary** stores uploaded player and team images.
 
-## Tech Stack
+## 🧰 Tech Stack
 
 | Area | Technologies |
 |---|---|
@@ -96,7 +101,7 @@ flowchart LR
 | Styling and icons | CSS, Bootstrap 5, Font Awesome |
 | Development server | Nodemon |
 
-## Project Structure
+## 🗂️ Project Structure
 
 ```text
 .
@@ -124,9 +129,9 @@ flowchart LR
 └── README.md
 ```
 
-## Getting Started
+## 🏁 Getting Started
 
-### 1. Prerequisites
+### 1. ✅ Prerequisites
 
 - Node.js 20 or newer
 - npm
@@ -134,7 +139,7 @@ flowchart LR
 - Cloudinary account credentials for player/team image uploads
 - Git
 
-### 2. Clone the Repo
+### 2. 📥 Clone the Repo
 
 ```bash
 git clone https://github.com/<your-github-username>/<your-repository>.git
@@ -143,7 +148,7 @@ cd <your-repository>
 
 Replace the URL and directory with your GitHub repository details.
 
-### 3. Backend Setup
+### 3. ⚙️ Backend Setup
 
 Install backend dependencies:
 
@@ -175,7 +180,7 @@ npm run dev
 
 The server listens on `http://localhost:3000` by default. `npm start` runs the app without Nodemon.
 
-### 4. Frontend Setup
+### 4. 🎨 Frontend Setup
 
 The React client has its own dependencies. In another terminal:
 
@@ -201,7 +206,7 @@ npm run dev
 
 Vite runs on port `5173` and proxies configured API, authentication, and static requests to the backend at `http://localhost:3000`. Keep the backend running in a separate terminal.
 
-### 5. Try It
+### 5. 🧪 Try It
 
 1. Start MongoDB and the backend.
 2. Build the React client, or run Vite separately for frontend development.
@@ -213,7 +218,7 @@ Vite runs on port `5173` and proxies configured API, authentication, and static 
 
 The admin password is read from `ADMIN_PASSWORD`. Public pages can be viewed without admin access; administrative actions require login.
 
-### 6. API Reference
+### 6. 🔌 API Reference
 
 All endpoints are served by the Express backend. Administrative write actions require an active admin session; player/team list and detail reads are public.
 
@@ -247,7 +252,7 @@ All endpoints are served by the Express backend. Administrative write actions re
 
 The complete Turf scoring routes are defined in `routes/turf.routes.js`; tournament routes are in `routes/tcl.routes.js`. Form uploads use multipart form data. Player images and team logos accept JPG, PNG, or WEBP up to 2 MB.
 
-### 7. Deployment
+### 7. 🚢 Deployment
 
 This is a provider-neutral deployment checklist:
 
@@ -278,7 +283,7 @@ This is a provider-neutral deployment checklist:
 
 Do not commit `.env`, database credentials, Cloudinary secrets, or real player data/screenshots to a public repository.
 
-### 8. Roadmap
+### 8. 🛣️ Roadmap
 
 - Add real, privacy-safe application screenshots to the README.
 - Add automated tests for Turf scoring rules, ball-record wording, undo, and innings transitions.
@@ -288,11 +293,15 @@ Do not commit `.env`, database credentials, Cloudinary secrets, or real player d
 - Review accessibility and responsive behavior across admin and viewer pages.
 - Consider live spectator broadcasting or caching only if future traffic measurements justify it.
 
-## Development Notes
+## 📝 Development Notes
 
 - `npm test` is currently a placeholder and does not run a test suite.
-- Turf scoring behavior is specific to the application's Turf Cricket rules.
+- 🏟️ Turf scoring behavior is specific to the application's Turf Cricket rules.
 - MongoDB is the source of truth for matches and player profiles.
 - `turfStats` is the combined Turf + TCL career record.
 - Match MVP is per match; Turf MVP is per complete session or tournament.
 - Redis is not required for the current single-admin scoring workflow.
+
+---
+
+🎉 Made for local Turf Cricket scoring and tournament management.
