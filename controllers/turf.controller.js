@@ -90,6 +90,9 @@ function ballSentence(team, body) {
     if (type === "retire") {
         return `${playerName(team, body.outPlayerId)} was retired out by the captain ${team.captainName || "captain"}`;
     }
+    if (type === "mankad") {
+        return `${playerName(team, team.nonStrikerId)} was run out by ${bowler} (Mankad)`;
+    }
     if (type === "wide") {
         const runs = 1 + Math.max(0, Number(body.wideRuns || 0));
         return `${bowler} bowls a ${runs} wide${runs === 1 ? "" : "s"}`;
@@ -135,7 +138,8 @@ function appendBallEvent(match, innings, body, beforeTeam) {
         over: Math.floor(legalBalls / 6) + 1,
         ball: legalBalls % 6 + 1,
         legal: body.type !== "retire" && body.type !== "wide" && body.type !== "noball" &&
-            !(body.type === "out" && body.isWide) && !(body.type === "out" && body.isNoBall),
+            body.type !== "mankad" && !(body.type === "out" && body.isWide) && !(body.type === "out" && body.isNoBall),
+        delivery: body.type !== "retire" && body.type !== "mankad",
         sentence: ballSentence(beforeTeam, body),
         payload: JSON.parse(JSON.stringify(body)),
         striker: playerName(beforeTeam, beforeTeam.strikerId),
@@ -458,6 +462,41 @@ exports.updateLive = async (req, res) => {
         res.status(400).json({ error: "update_failed" });
     }
 };
+exports.setWicketLimit = async (req, res) => {
+    try {
+        const match = await Match.findOne({ _id: req.params.id, status: "live" });
+        if (!match) return res.status(404).json({ error: "match_not_found_or_completed" });
+        const { innings, wicketLimit } = req.body;
+        if (!["team1", "team2"].includes(innings) || innings !== match.currentInnings) {
+            return res.status(400).json({ error: "invalid_innings" });
+        }
+        const team = match[innings];
+        const maxLimit = match.isSuperOver ? 2 : Math.max(1, team.batting.length - 1);
+        if (isInningsComplete(match, innings)) {
+            return res.status(400).json({ error: "innings_already_complete" });
+        }
+        if (wicketLimit === null || wicketLimit === "") {
+            team.wicketLimit = null;
+        } else {
+            const value = Number(wicketLimit);
+            if (!Number.isInteger(value) || value < 1 || value > maxLimit || value < team.wickets) {
+                return res.status(400).json({ error: "invalid_wicket_limit", maxLimit });
+            }
+            team.wicketLimit = value;
+        }
+        autoSwitchInnings(match);
+        maybeDeclareResult(match);
+        await aggregatePendingInningsStats(match);
+        await awardMatchMVP(match);
+        const justCompleted = match.status === "completed";
+        await match.save();
+        if (justCompleted) await tryCreatePlayoffs(match);
+        res.json({ ok: true, match: matchForBallResponse(match) });
+    } catch (err) {
+        console.error("set_wicket_limit_failed", err);
+        res.status(500).json({ error: "wicket_limit_failed" });
+    }
+};
 function findRow(list, id) {
     return list.find((p) => String(p.id) === String(id));
 }
@@ -475,7 +514,7 @@ function isInningsComplete(match, innings) {
     const oversDone = team.legalBalls >= match.overs * 6;
     // Standard Super Over rule: innings ends after 2 wickets, not a full
     // all-out — regardless of how many players are in the squad.
-    const wicketCap = match.isSuperOver ? 2 : team.batting.length - 1;
+    const wicketCap = match.isSuperOver ? 2 : (team.wicketLimit || team.batting.length - 1);
     const allOut = team.wickets >= wicketCap;
     return oversDone || allOut || team.endedEarly;
 }
@@ -500,10 +539,11 @@ function maybeDeclareResult(match) {
     const target = first.totalRuns + 1;
     const chased = second.totalRuns >= target;
     const oversDone = second.legalBalls >= match.overs * 6;
-    const allOut = second.wickets >= (match.isSuperOver ? 2 : second.batting.length - 1);
+    const wicketCap = match.isSuperOver ? 2 : (second.wicketLimit || second.batting.length - 1);
+    const allOut = second.wickets >= wicketCap;
     if (!chased && !oversDone && !allOut) return;
     if (second.totalRuns > first.totalRuns) {
-        const wicketsLeft = match.isSuperOver ? (2 - second.wickets) : (second.batting.length - 1 - second.wickets);
+        const wicketsLeft = wicketCap - second.wickets;
         match.result = `${second.name} won by ${wicketsLeft} wicket${wicketsLeft === 1 ? "" : "s"}`;
         match.winnerKey = secondKey;
     } else if (first.totalRuns > second.totalRuns) {
@@ -667,32 +707,103 @@ exports.setupInnings = async (req, res) => {
         const { innings, strikerId, nonStrikerId, bowlerId, keeperId } = req.body;
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
-        // Re-picking the opening pair is only allowed before the first ball; the
-        // previous pair goes back to "yet to bat" so nobody is left stuck as "batting".
-        if (strikerId && nonStrikerId) {
-            const started = team.legalBalls > 0 || team.totalRuns > 0 || team.wickets > 0 || (team.currentOverBalls || []).length > 0;
-            if (started) return res.status(400).json({ error: "innings_already_started" });
-            [team.strikerId, team.nonStrikerId].forEach((oldId) => {
-                const oldRow = oldId ? findRow(team.batting, oldId) : null;
-                if (oldRow && oldRow.status === "batting" && !oldRow.balls && !oldRow.runs) {
-                    oldRow.status = "yet_to_bat";
-                    oldRow.battingOrder = null;
+        const batterPicks = [
+            { field: "strikerId", id: strikerId },
+            { field: "nonStrikerId", id: nonStrikerId },
+        ].filter((pick) => pick.id);
+        const nextStrikerId = strikerId || team.strikerId;
+        const nextNonStrikerId = nonStrikerId || team.nonStrikerId;
+        if (nextStrikerId && nextNonStrikerId && String(nextStrikerId) === String(nextNonStrikerId)) {
+            return res.status(400).json({ error: "Striker and non-striker must be different players." });
+        }
+
+        const currentBatterIds = [team.strikerId, team.nonStrikerId].filter(Boolean).map(String);
+        const nextBatterIds = [nextStrikerId, nextNonStrikerId].filter(Boolean).map(String);
+        const batterChanges = [];
+        for (const pick of batterPicks) {
+            const currentId = team[pick.field];
+            if (currentId && String(currentId) !== String(pick.id)) {
+                const currentRow = findRow(team.batting, currentId);
+                if (!currentRow || currentRow.balls > 0 || currentRow.runs > 0) {
+                    return res.status(400).json({ error: "A batter can only be replaced while their score is 0 runs and 0 balls." });
                 }
-            });
+            }
+
+            const nextRow = findRow(team.batting, pick.id);
+            if (!nextRow || nextRow.status === "out" || nextRow.status === "retired") {
+                return res.status(400).json({ error: "Select an available batter who has not been dismissed or retired." });
+            }
+            if (!currentBatterIds.includes(String(pick.id)) &&
+                (nextRow.status !== "yet_to_bat" || nextRow.balls > 0 || nextRow.runs > 0)) {
+                return res.status(400).json({ error: "Select an available batter who has not been dismissed or retired." });
+            }
+            if (currentId && String(currentId) !== String(pick.id) && !nextBatterIds.includes(String(currentId))) {
+                batterChanges.push({
+                    role: pick.field === "strikerId" ? "striker" : "non-striker",
+                    previous: findRow(team.batting, currentId),
+                    next: nextRow,
+                });
+            }
         }
-        if (strikerId) {
-            team.strikerId = strikerId;
-            const row = findRow(team.batting, strikerId);
-            if (row && row.status === "yet_to_bat") { row.status = "batting"; stampBattingOrder(row, team); }
+
+        if (batterChanges.length) {
+            if (!match.ballEvents) match.ballEvents = [];
+            for (const change of batterChanges) {
+                match.ballEvents.push({
+                    kind: "batter_change",
+                    innings,
+                    over: Math.floor((team.legalBalls || 0) / 6) + 1,
+                    ball: null,
+                    legal: false,
+                    delivery: false,
+                    sentence: `${change.previous.name} (batter) is changed to ${change.next.name} (batter)`,
+                    role: change.role,
+                    previousBatter: change.previous.name,
+                    batter: change.next.name,
+                    createdAt: new Date(),
+                });
+            }
+            match.markModified("ballEvents");
         }
-        if (nonStrikerId) {
-            team.nonStrikerId = nonStrikerId;
-            const row = findRow(team.batting, nonStrikerId);
-            if (row && row.status === "yet_to_bat") { row.status = "batting"; stampBattingOrder(row, team); }
+
+        for (const currentId of currentBatterIds) {
+            if (!nextBatterIds.includes(currentId)) {
+                const currentRow = findRow(team.batting, currentId);
+                if (currentRow && currentRow.status === "batting") {
+                    currentRow.status = "yet_to_bat";
+                    currentRow.battingOrder = null;
+                }
+            }
+        }
+        if (strikerId) team.strikerId = strikerId;
+        if (nonStrikerId) team.nonStrikerId = nonStrikerId;
+        for (const nextId of nextBatterIds) {
+            const row = findRow(team.batting, nextId);
+            if (row && row.status === "yet_to_bat") {
+                row.status = "batting";
+                stampBattingOrder(row, team);
+            }
         }
         if (bowlerId) {
-            if (team.overStarted && team.currentBowlerId && String(team.currentBowlerId) !== String(bowlerId)) {
+            const previousBowlerId = team.currentBowlerId;
+            if (team.overStarted && previousBowlerId && String(previousBowlerId) !== String(bowlerId)) {
                 team.overSplit = true;
+                const previousBowler = playerName(team, previousBowlerId);
+                const nextBowler = playerName(team, bowlerId);
+                if (!match.ballEvents) match.ballEvents = [];
+                match.ballEvents.push({
+                    kind: "bowler_change",
+                    innings,
+                    over: Math.floor((team.legalBalls || 0) / 6) + 1,
+                    ball: null,
+                    legal: false,
+                    delivery: false,
+                    sentence: `${previousBowler} (bowler) is changed to ${nextBowler} (bowler)`,
+                    previousBowler,
+                    bowler: nextBowler,
+                    createdAt: new Date(),
+                });
+                match.markModified("ballEvents");
             }
             team.currentBowlerId = bowlerId;
             if (!team.overStarted && team.legalBalls % 6 === 0 && !isInningsComplete(match, innings)) {

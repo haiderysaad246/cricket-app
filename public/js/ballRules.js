@@ -18,7 +18,7 @@
     function inningsComplete(match, innings) {
         const team = match[innings];
         if (!team) return false;
-        const wicketCap = match.isSuperOver ? 2 : (team.batting || []).length - 1;
+        const wicketCap = match.isSuperOver ? 2 : (team.wicketLimit || (team.batting || []).length - 1);
         return team.legalBalls >= match.overs * 6
             || team.wickets >= wicketCap
             || !!team.endedEarly;
@@ -44,12 +44,13 @@
         const first = match[firstKey];
         const second = match[secondKey];
         const target = first.totalRuns + 1;
+        const secondWicketCap = match.isSuperOver ? 2 : (second.wicketLimit || second.batting.length - 1);
         const finished = second.totalRuns >= target
             || second.legalBalls >= match.overs * 6
-            || second.wickets >= (match.isSuperOver ? 2 : second.batting.length - 1);
+            || second.wickets >= secondWicketCap;
         if (!finished) return;
         if (second.totalRuns > first.totalRuns) {
-            const wicketsLeft = match.isSuperOver ? 2 - second.wickets : second.batting.length - 1 - second.wickets;
+            const wicketsLeft = secondWicketCap - second.wickets;
             match.result = `${second.name} won by ${wicketsLeft} wicket${wicketsLeft === 1 ? "" : "s"}`;
             match.winnerKey = secondKey;
         } else if (first.totalRuns > second.totalRuns) {
@@ -67,6 +68,25 @@
         const team = match && match[innings];
         if (!team) return { ok: false, error: "invalid_innings" };
         const type = body && body.type;
+        if (type === "mankad") {
+            const outRow = findRow(team.batting, team.nonStrikerId);
+            if (!outRow || outRow.status === "out" || outRow.status === "retired") {
+                return { ok: false, error: "invalid_non_striker" };
+            }
+            team.wickets += 1;
+            outRow.status = "out";
+            const bowlerName = findRow(team.bowling, team.currentBowlerId)?.name || "Bowler";
+            outRow.dismissalText = `Run Out (${bowlerName})`;
+            team.nonStrikerId = body.newBatsmanId || null;
+            const newRow = body.newBatsmanId ? findRow(team.batting, body.newBatsmanId) : null;
+            if (newRow && newRow.status === "yet_to_bat") {
+                newRow.status = "batting";
+                stampBattingOrder(newRow, team);
+            }
+            autoSwitchInnings(match);
+            maybeDeclareResult(match);
+            return { ok: true };
+        }
         if (!team.overStarted) {
             team.currentOverBalls = [];
             team.currentOverRuns = 0;

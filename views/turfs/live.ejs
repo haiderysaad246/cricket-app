@@ -213,7 +213,7 @@
                                 <div class="records-over-heading">
                                     <strong>Over <%= over %></strong>
                                     <div class="live-over-balls" aria-label="Over ball results">
-                                        <% for (const event of overEvents) { %>
+                                        <% for (const event of overEvents.filter((item) => item.delivery !== false)) { %>
                                             <% const value = recordBallValue(event); %>
                                             <span class="over-ball-chip <%= recordBallClass(value) %>"><%= value %></span>
                                         <% } %>
@@ -221,7 +221,12 @@
                                 </div>
                                 <ol>
                                     <% for (const event of overEvents) { %>
-                                        <li><span class="records-ball"><%= event.legal ? `${over}.${event.ball}` : `${over}.${event.ball}*` %></span><%= event.sentence %></li>
+                                        <li>
+                                            <% if (event.delivery !== false) { %>
+                                                <span class="records-ball"><%= event.legal ? `${over}.${event.ball}` : `${over}.${event.ball}*` %></span>
+                                            <% } %>
+                                            <%= event.sentence %>
+                                        </li>
                                     <% } %>
                                 </ol>
                             </div>

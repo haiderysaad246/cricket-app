@@ -163,6 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const leftTeamLogo = (leftKey === 'team1' ? m.team1TeamId : m.team2TeamId)?.logo || '/images/placeholder-player.svg';
         const rightTeamLogo = (rightKey === 'team1' ? m.team1TeamId : m.team2TeamId)?.logo || '/images/placeholder-player.svg';
         const rightTeamDone = rightKey === m.battingFirst && m.currentInnings !== m.battingFirst;
+        const scoreValue = (scoreTeam, inningsKey) => {
+            const score = `${scoreTeam.totalRuns || 0}/${scoreTeam.wickets || 0}`;
+            const activeLimit = m.status === 'live' && m.currentInnings === inningsKey;
+            if (!window.IS_ADMIN || !activeLimit) return `<div class="live-score-value">${score}</div>`;
+            const limitLabel = scoreTeam.wicketLimit ? ` (limit ${scoreTeam.wicketLimit})` : '';
+            return `<button type="button" class="live-score-value live-score-value-editable" data-wicket-limit="${inningsKey}" title="Click to set or clear this innings' wicket limit">${score}<span class="live-wicket-limit-label">${limitLabel}</span></button>`;
+        };
 
         const liveTeam = m[m.currentInnings] || {};
         const liveStriker = (liveTeam.batting || []).find((p) => String(p.id) === String(liveTeam.strikerId));
@@ -288,14 +295,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
 
                     <div class="live-score-mid">
-                        <div class="live-score-value">${leftTeam.totalRuns || 0}/${leftTeam.wickets || 0}</div>
+                        ${scoreValue(leftTeam, leftKey)}
                         <div class="live-score-overs">(${oversDisplayTop(leftTeam.legalBalls || 0)} ov)</div>
+                        ${window.IS_ADMIN && m.status === 'live' ? '<div class="live-wicket-limit-hint">Tap score to set wicket limit</div>' : ''}
                     </div>
 
                     <div class="live-score-vs">VS</div>
 
                     <div class="live-score-mid ${rightTeamDone ? 'live-innings-done' : ''}">
-                        <div class="live-score-value">${rightTeam.totalRuns || 0}/${rightTeam.wickets || 0}</div>
+                        ${scoreValue(rightTeam, rightKey)}
                         <div class="live-score-overs">(${oversDisplayTop(rightTeam.legalBalls || 0)} ov)</div>
                     </div>
 
@@ -332,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function isInningsOver(t) {
         if (!t) return false;
-        const wicketCap = match.isSuperOver ? 2 : (t.batting ? t.batting.length - 1 : 10);
+        const wicketCap = match.isSuperOver ? 2 : (t.wicketLimit || (t.batting ? t.batting.length - 1 : 10));
         return t.legalBalls >= match.overs * 6 || t.wickets >= wicketCap || !!t.endedEarly;
     }
 
@@ -590,6 +598,18 @@ function abortInput() {
         });
     }
 
+    function startMankadFlow() {
+        resetOutState();
+        const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
+        if (!eligible.length) {
+            queueBall({ type: 'mankad', newBatsmanId: null });
+            return;
+        }
+        openCardPicker(eligible, 'New Batter After Mankad', (id) => {
+            queueBall({ type: 'mankad', newBatsmanId: id });
+        });
+    }
+
     // Handles every dismissal that needs more than one piece of info
     // (catch/bowled/hitwicket/stumping/retired/obstructing/runout).
     // Runs/dot/wide/no-ball never reach this — they submit via submitDirect.
@@ -663,7 +683,7 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
                 </button>
                 <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="runout">
                     <i class="fa-solid fa-bolt"></i>
-                    <span>Run Out</span>
+                    <span>Run Out / Mankad</span>
                 </button>
             `;
         } else if (level === 'moreRuns') {
@@ -700,6 +720,11 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
             scorePadGrid.innerHTML = [0, 1, 2, 3, 4, 5].map((n) => `
                 <button type="button" class="score-pad-btn" data-runoutruns="${n}">${n} run${n === 1 ? '' : 's'}</button>
             `).join('');
+        } else if (level === 'runout') {
+            scorePadGrid.innerHTML = `
+                <button type="button" class="score-pad-btn" data-action="regularrunout">Run Out</button>
+                <button type="button" class="score-pad-btn" data-action="mankad">Mankad (Non-Striker)</button>
+            `;
         }
 
         scorePadGrid.querySelectorAll('.score-pad-btn').forEach((btn) => {
@@ -713,7 +738,7 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
                     if (parent === 'wide') {
                         submitDirect({ type: 'wide' });
                     } else if (parent === 'runout') {
-                        startRunoutFlow(false);
+                        pushLevel('runout');
                     } else {
                         // out / noball — have children
                         pushLevel(parent);
@@ -768,6 +793,15 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
 
                 if (btn.dataset.action === 'stumpedmore') {
                     pushLevel('stumped');
+                    return;
+                }
+
+                if (btn.dataset.action === 'regularrunout') {
+                    startRunoutFlow(false);
+                    return;
+                }
+                if (btn.dataset.action === 'mankad') {
+                    startMankadFlow();
                     return;
                 }
 
@@ -849,12 +883,22 @@ scorePadCloseBtn.addEventListener('click', () => {
         });
     });
 
-    // ---- Change players before the first ball --------------------------
-    function ballsStarted(t) {
-        return !!t && ((t.legalBalls || 0) > 0 || (t.totalRuns || 0) > 0 || (t.wickets || 0) > 0 || (t.currentOverBalls || []).length > 0);
+    // A current batter is replaceable only while their scorecard is still 0/0.
+    function canChangeBatter(role) {
+        const id = team && team[role === 'striker' ? 'strikerId' : 'nonStrikerId'];
+        if (!id) return true;
+        const row = findRow(team.batting, id);
+        return !!row && (row.runs || 0) === 0 && (row.balls || 0) === 0;
+    }
+    function hasChangeableBatter() {
+        return canChangeBatter('striker') || canChangeBatter('nonStriker');
+    }
+    function updateSetupRoleAvailability() {
+        document.querySelectorAll('#scoreSetupForm .role-pick-btn[data-role="striker"], #scoreSetupForm .role-pick-btn[data-role="nonStriker"]')
+            .forEach((button) => { button.disabled = !canChangeBatter(button.dataset.role); });
     }
     function updateEditablePlayers() {
-        document.getElementById('liveScoreSummaryWrapper').classList.toggle('can-edit-players', !ballsStarted(team));
+        document.getElementById('liveScoreSummaryWrapper').classList.toggle('can-edit-players', hasChangeableBatter());
     }
 
     const scoreSetupOverlay = document.getElementById('scoreSetupOverlay');
@@ -879,11 +923,41 @@ scorePadCloseBtn.addEventListener('click', () => {
         setupPicks.nonStriker = team.nonStrikerId;
         setupPicks.bowler = team.currentBowlerId;
         Object.keys(setupChipIds).forEach(showSetupChip);
+        updateSetupRoleAvailability();
         scoreSetupOverlay.style.display = 'flex';
     }
 
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
-        if (e.target.closest('.live-batters-col') && !ballsStarted(team) && !isSubmitting) openSetupForm();
+        const limitButton = e.target.closest('[data-wicket-limit]');
+        if (limitButton && !isBusy()) {
+            const innings = limitButton.dataset.wicketLimit;
+            const selectedTeam = match[innings];
+            const maxLimit = match.isSuperOver ? 2 : Math.max(1, selectedTeam.batting.length - 1);
+            const current = selectedTeam.wicketLimit == null ? '' : String(selectedTeam.wicketLimit);
+            const answer = window.prompt(
+                `Set wicket limit for ${selectedTeam.name} (1-${maxLimit}). Leave blank to use the normal all-out limit.`,
+                current,
+            );
+            if (answer === null) return;
+            const value = answer.trim() === '' ? null : Number(answer);
+            if (value !== null && (!Number.isInteger(value) || value < 1 || value > maxLimit || value < selectedTeam.wickets)) {
+                window.alert(`Enter a whole number from ${Math.max(1, selectedTeam.wickets)} to ${maxLimit}.`);
+                return;
+            }
+            isSubmitting = true;
+            requestChain.then(async () => {
+                try {
+                    const data = await postJson(`/turfs/live/${matchId}/wicket-limit`, { innings, wicketLimit: value });
+                    handleMatchUpdate(data.match);
+                } catch (err) {
+                    window.alert(err.message || 'Could not update wicket limit.');
+                } finally {
+                    isSubmitting = false;
+                }
+            });
+            return;
+        }
+        if (e.target.closest('.live-batters-col') && hasChangeableBatter() && !isBusy()) openSetupForm();
     });
     document.querySelectorAll('#scoreSetupForm .role-pick-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -899,11 +973,14 @@ scorePadCloseBtn.addEventListener('click', () => {
     });
     document.getElementById('scoreSetupForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (isBusy()) return;
         if (!setupPicks.striker || !setupPicks.nonStriker || !setupPicks.bowler) {
             alert('Please select striker, non-striker and bowler.');
             return;
         }
+        isSubmitting = true;
         try {
+            await requestChain;
             const data = await postJson(`/turfs/live/${matchId}/setup`, {
                 innings: match.currentInnings,
                 strikerId: setupPicks.striker,
@@ -914,6 +991,8 @@ scorePadCloseBtn.addEventListener('click', () => {
             handleMatchUpdate(data.match);
         } catch (err) {
             console.error(err);
+        } finally {
+            isSubmitting = false;
         }
     });
 

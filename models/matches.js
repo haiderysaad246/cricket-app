@@ -8,7 +8,6 @@ const battingRowSchema = new Schema({
     isCaptain: { type: Boolean, default: false },
     runs: { type: Number, default: 0 },
     balls: { type: Number, default: 0 },
-    noBalls: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
     fours: { type: Number, default: 0 },
     sixes: { type: Number, default: 0 },
@@ -23,6 +22,7 @@ const bowlingRowSchema = new Schema({
     image: String,
     isCaptain: { type: Boolean, default: false },
     balls: { type: Number, default: 0 },
+    noBalls: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
     maidens: { type: Number, default: 0 },
     runs: { type: Number, default: 0 },
@@ -50,6 +50,7 @@ const teamStateSchema = new Schema({
     overSplit: { type: Boolean, default: false }, // bowler changed mid-over, so nobody gets a maiden for it
     totalRuns: { type: Number, default: 0 },
     wickets: { type: Number, default: 0 },
+    wicketLimit: { type: Number, default: null, min: 1 },
     extraWides: { type: Number, default: 0 },
     extraNoBalls: { type: Number, default: 0 },
     endedEarly: { type: Boolean, default: false },

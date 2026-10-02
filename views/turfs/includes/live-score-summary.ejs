@@ -45,8 +45,16 @@
         </div>
 
         <div class="live-score-mid">
-            <div class="live-score-value"><%= leftTeam.totalRuns || 0 %>/<%= leftTeam.wickets || 0 %></div>
+            <% if (isAdmin && match.status === 'live') { %>
+                <button type="button" class="live-score-value live-score-value-editable" data-wicket-limit="<%= leftKey %>" title="Click to set or clear this innings' wicket limit">
+                    <%= leftTeam.totalRuns || 0 %>/<%= leftTeam.wickets || 0 %>
+                    <% if (leftTeam.wicketLimit) { %><span class="live-wicket-limit-label"> (limit <%= leftTeam.wicketLimit %>)</span><% } %>
+                </button>
+            <% } else { %>
+                <div class="live-score-value"><%= leftTeam.totalRuns || 0 %>/<%= leftTeam.wickets || 0 %></div>
+            <% } %>
             <div class="live-score-overs">(<%= oversDisplayTop(leftTeam.legalBalls || 0) %> ov)</div>
+            <% if (isAdmin && match.status === 'live') { %><div class="live-wicket-limit-hint">Tap score to set wicket limit</div><% } %>
         </div>
 
         <div class="live-score-vs">VS</div>

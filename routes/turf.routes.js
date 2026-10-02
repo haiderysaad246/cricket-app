@@ -15,6 +15,7 @@ router.get("/live/:id/score", requireAdmin, turfController.showScorePad);
 router.post("/live/:id/end", requireAdmin, turfController.endMatch);
 router.post("/live/:id/cancel", requireAdmin, turfController.cancelMatch);
 router.patch("/live/:id", requireAdmin, turfController.updateLive);
+router.post("/live/:id/wicket-limit", requireAdmin, turfController.setWicketLimit);
 router.post("/live/:id/setup", requireAdmin, turfController.setupInnings);
 router.post("/live/:id/switch-innings", requireAdmin, turfController.switchInnings);
 router.post("/live/:id/undo", requireAdmin, turfController.undoLastBall);
