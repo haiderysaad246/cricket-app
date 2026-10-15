@@ -143,7 +143,7 @@
         </div>
 
         <div class="scorecard-innings" id="innings-<%= firstInningsKey %>" style="<%= match.currentInnings !== firstInningsKey ? 'display:none;' : '' %>">
-            <%- include('./scorecard-innings.ejs', { battingTeam: match[firstInningsKey], bowlingTeamName: match[secondInningsKey].name, target: match.currentInnings === secondInningsKey ? (match[secondInningsKey].totalRuns || 0) + 1 : null, matchFinished: !!match.result }) %>
+            <%- include('./scorecard-innings.ejs', { battingTeam: match[firstInningsKey], bowlingTeamName: match[secondInningsKey].name, target: null, matchFinished: !!match.result }) %>
         </div>
 
         <div class="scorecard-innings" id="innings-<%= secondInningsKey %>" style="<%= match.currentInnings !== secondInningsKey ? 'display:none;' : '' %>">
