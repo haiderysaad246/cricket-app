@@ -1,6 +1,6 @@
 (function () {
     const DB_NAME = "cricket-offline";
-    const DB_VERSION = 2;
+    const DB_VERSION = 3;
     let dbPromise;
 
     function openDatabase() {
@@ -21,6 +21,9 @@
                     }
                     if (!db.objectStoreNames.contains("metadata")) {
                         db.createObjectStore("metadata", { keyPath: "key" });
+                    }
+                    if (!db.objectStoreNames.contains("offlineSnapshot")) {
+                        db.createObjectStore("offlineSnapshot", { keyPath: "key" });
                     }
                 };
                 request.onsuccess = () => resolve(request.result);
@@ -98,11 +101,28 @@
         });
     }
 
+    async function saveOfflineSnapshot(snapshot) {
+        const db = await openDatabase();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction("offlineSnapshot", "readwrite");
+            tx.objectStore("offlineSnapshot").put({ key: "current", snapshot });
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error || new Error("Could not save offline data."));
+            tx.onabort = () => reject(tx.error || new Error("Could not save offline data."));
+        });
+    }
+
+    async function getOfflineSnapshot() {
+        return read("offlineSnapshot", "get", "current");
+    }
+
     window.OfflineStore = {
         getMatch: (matchId) => read("matchSnapshots", "get", String(matchId)),
         getPendingBalls,
         saveBall,
         saveMatch,
+        saveOfflineSnapshot,
+        getOfflineSnapshot,
         saveSyncedMatch,
         removePendingBall,
     };

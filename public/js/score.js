@@ -54,22 +54,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result.ok ? predicted : null;
     }
 
-    function createBallOperation(body) {
+    function createBallOperation(body, url = `/turfs/live/${matchId}/ball`) {
         const operationId = crypto.randomUUID
             ? crypto.randomUUID()
             : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
         return {
             operationId,
             matchId: String(matchId),
-            url: `/turfs/live/${matchId}/ball`,
+            url,
             body: { ...body, _offlineOperationId: operationId },
             createdAt: Date.now(),
         };
     }
 
-    async function saveBallOnDevice(operation, predicted) {
+    async function preserveOfflineMatch() {
         try {
-            await window.OfflineStore.saveBall(operation, match || predicted);
+            await window.OfflineStore.saveMatch(match);
             updateSyncNotice();
         } catch (err) {
             console.error('offline_score_save_failed', err);
@@ -92,7 +92,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!response.ok || !data.ok) {
                 const message = data.error || `request_failed_${response.status}`;
                 if (response.status >= 500) {
-                    await saveBallOnDevice(operation, predicted);
+                    await preserveOfflineMatch();
+                    pendingBalls = Math.max(0, pendingBalls - 1);
                     return;
                 }
                 throw new Error(message);
@@ -121,7 +122,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (err) {
             if (err instanceof TypeError || !navigator.onLine) {
-                await saveBallOnDevice(operation, predicted);
+                await preserveOfflineMatch();
+                pendingBalls = Math.max(0, pendingBalls - 1);
                 return;
             }
             console.error('score_request_failed', err);
@@ -150,9 +152,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).catch((err) => console.error('offline_queue_read_failed', err));
     }
 
-    async function syncPendingMatchBalls() {
+    async function syncPendingMatchBalls(excludeOperationId = null) {
         const pending = (await window.OfflineStore.getPendingBalls())
-            .filter((operation) => String(operation.matchId) === String(matchId));
+            .filter((operation) =>
+                String(operation.matchId) === String(matchId) &&
+                operation.operationId !== excludeOperationId);
         if (!pending.length) return;
         if (!navigator.onLine) throw new Error('Pending scores are saved on this device; reconnect before continuing this online action.');
 
@@ -183,26 +187,88 @@ document.addEventListener('DOMContentLoaded', async () => {
         const operation = createBallOperation(fullBody);
         const revision = ++optimisticRevision;
         requestChain = requestChain.then(async () => {
-            const pending = (await window.OfflineStore.getPendingBalls())
-                .some((item) => String(item.matchId) === String(matchId));
+            await window.OfflineStore.saveBall(operation, match);
             if (!navigator.onLine) {
-                await saveBallOnDevice(operation, predicted);
+                pendingBalls = Math.max(0, pendingBalls - 1);
+                updateSyncNotice();
                 return;
             }
-            if (pending) {
-                try {
-                    await syncPendingMatchBalls();
-                } catch (err) {
-                    console.error('queued_score_sync_failed', err);
-                    await saveBallOnDevice(operation, predicted);
-                    return;
-                }
+            try {
+                await syncPendingMatchBalls(operation.operationId);
+            } catch (err) {
+                console.error('queued_score_sync_failed', err);
+                await preserveOfflineMatch();
+                pendingBalls = Math.max(0, pendingBalls - 1);
+                return;
             }
             await sendBallToServer(operation, predicted, revision);
         }).catch((err) => {
             console.error('score_queue_failed', err);
             pendingBalls = Math.max(0, pendingBalls - 1);
             alert(`Could not save this score: ${err.message}`);
+        });
+    }
+
+    function queueNextBowler(bowlerId, storageKey, legalBalls) {
+        const innings = match.currentInnings;
+        const updatedMatch = JSON.parse(JSON.stringify(match));
+        const updatedTeam = updatedMatch[innings];
+        const previousBowlerId = updatedTeam.currentBowlerId;
+        if (String(previousBowlerId) === String(bowlerId)) {
+            activeBowlerPrompt = false;
+            return;
+        }
+        const previousBowler = findRow(updatedTeam.bowling, previousBowlerId)?.name || 'Bowler';
+        const nextBowler = findRow(updatedTeam.bowling, bowlerId)?.name || 'Bowler';
+        if (updatedTeam.overStarted) updatedTeam.overSplit = true;
+        updatedTeam.currentBowlerId = bowlerId;
+        if (!updatedTeam.overStarted && updatedTeam.legalBalls % 6 === 0) {
+            updatedTeam.currentOverBalls = [];
+        }
+        updatedMatch.ballEvents = updatedMatch.ballEvents || [];
+        updatedMatch.ballEvents.push({
+            kind: 'bowler_change',
+            innings,
+            over: Math.floor((updatedTeam.legalBalls || 0) / 6) + 1,
+            ball: null,
+            legal: false,
+            delivery: false,
+            sentence: `${previousBowler} (bowler) is changed to ${nextBowler} (bowler)`,
+            previousBowler,
+            bowler: nextBowler,
+            createdAt: new Date().toISOString(),
+        });
+        const operation = createBallOperation(
+            { innings, bowlerId },
+            `/turfs/live/${matchId}/setup`,
+        );
+        handleMatchUpdate(updatedMatch, false);
+        const revision = ++optimisticRevision;
+        pendingBalls++;
+        activeBowlerPrompt = false;
+        requestChain = requestChain.then(async () => {
+            await window.OfflineStore.saveBall(operation, match);
+            if (!navigator.onLine) {
+                pendingBalls = Math.max(0, pendingBalls - 1);
+                updateSyncNotice();
+                return;
+            }
+            try {
+                await syncPendingMatchBalls(operation.operationId);
+            } catch (err) {
+                console.error('queued_bowler_sync_failed', err);
+                await preserveOfflineMatch();
+                pendingBalls = Math.max(0, pendingBalls - 1);
+                return;
+            }
+            await sendBallToServer(operation, updatedMatch, revision);
+            if (revision === optimisticRevision && String(match[innings].currentBowlerId) === String(bowlerId)) {
+                sessionStorage.setItem(storageKey, `${legalBalls}:${bowlerId}`);
+            }
+        }).catch((err) => {
+            console.error('bowler_queue_failed', err);
+            pendingBalls = Math.max(0, pendingBalls - 1);
+            alert(`Could not save the next bowler: ${err.message}`);
         });
     }
 
@@ -481,25 +547,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
-            try {
-                await requestChain;
-                const data = await postJson(`/turfs/live/${matchId}/setup`, {
-                    innings: match.currentInnings,
-                    bowlerId: id,
-                });
-                sessionStorage.setItem(storageKey, `${legalBalls}:${id}`);
-                activeBowlerPrompt = false;
-                cancelBtn.style.display = '';
-                closeBtn.style.display = '';
-                handleMatchUpdate(data.match);
-            } catch (err) {
-                console.error('next_bowler_save_failed', err);
-                alert(`Could not save the next bowler. Please try again. ${err.message || ''}`.trim());
-                activeBowlerPrompt = false;
-                cancelBtn.style.display = 'none';
-                closeBtn.style.display = 'none';
-                checkOverAndPromptBowler();
-            }
+            activeBowlerPrompt = false;
+            cancelBtn.style.display = '';
+            closeBtn.style.display = '';
+            queueNextBowler(id, storageKey, legalBalls);
         });
     }
 

@@ -1,4 +1,4 @@
-const VERSION = "v2";
+const VERSION = "v4";
 const SHELL_CACHE = `cricket-shell-${VERSION}`;
 const RUNTIME_CACHE = `cricket-runtime-${VERSION}`;
 const PRECACHE = ["/players", "/teams", "/turfs", "/tcl", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png", "/icons/apple-touch-icon.png"];
@@ -77,6 +77,13 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin !== self.location.origin) {
     if (CDN.test(url.hostname)) event.respondWith(cacheFirst(req));
+    return;
+  }
+  if (/^\/(players|teams|points)(\/|$)/.test(url.pathname)) {
+    event.respondWith(fetch(req).catch(() => new Response(
+      "<meta name='viewport' content='width=device-width,initial-scale=1'><body style='font-family:sans-serif;background:#1f1f1f;color:#fff;padding:2rem'><h2>Page unavailable offline</h2><p>Reconnect to use player, team, or points pages.</p>",
+      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    )));
     return;
   }
   if (/^\/(assets|icons|images|uploads)\//.test(url.pathname)) {

@@ -13,6 +13,7 @@ const turfRoutes = require("./routes/turf.routes");
 const tclRoutes = require("./routes/tcl.routes");
 const pointsRoutes = require("./routes/points.routes");
 const authRoutes = require("./routes/auth.routes");
+const offlineRoutes = require("./routes/offline.routes");
 const { attachRole, requireAdmin } = require("./middlewares/auth.middleware");
 
 const app = express();
@@ -48,6 +49,7 @@ app.use("/", authRoutes);
 app.use("/", pageRoutes);
 app.use("/api/players", playersApiRoutes);
 app.use("/api/teams", teamsApiRoutes); // JSON API for React — admin-gated per-route (create/edit/delete), like players
+app.use("/api/offline", offlineRoutes);
 app.use("/api/turfs", requireAdmin, turfRoutes); // JSON API for React (content-negotiated)
 app.use("/tcl", tclRoutes); // TCL tournament folders + fixtures; live scoring reuses /turfs/live/:id
 app.use("/points", pointsRoutes);
