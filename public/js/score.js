@@ -51,26 +51,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result.ok ? predicted : null;
     }
 
-    async function saveBallOnDevice(body, predicted) {
+    function createBallOperation(body) {
+        const operationId = crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        return {
+            operationId,
+            matchId: String(matchId),
+            url: `/turfs/live/${matchId}/ball`,
+            body: { ...body, _offlineOperationId: operationId },
+            createdAt: Date.now(),
+        };
+    }
+
+    async function saveBallOnDevice(operation, predicted) {
         try {
-            const operationId = crypto.randomUUID
-                ? crypto.randomUUID()
-                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-            await window.OfflineStore.saveBall({
-                operationId,
-                matchId: String(matchId),
-                url: `/turfs/live/${matchId}/ball`,
-                body: { ...body, _offlineOperationId: operationId },
-                createdAt: Date.now(),
-            }, predicted);
+            await window.OfflineStore.saveBall(operation, predicted);
             updateSyncNotice();
-            if (predicted.status === 'completed') {
-                if (predicted.tournamentId) {
-                    window.location.href = `/tcl/session/${predicted.tournamentId}`;
-                } else if (predicted.turfId) {
-                    window.location.href = `/turfs/session/${predicted.turfId}`;
-                }
-            }
         } catch (err) {
             console.error('offline_score_save_failed', err);
             alert(`This score could not be saved on this device: ${err.message}`);
@@ -78,6 +75,50 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.location.reload();
         } finally {
             pendingBalls = Math.max(0, pendingBalls - 1);
+        }
+    }
+
+    async function sendBallToServer(operation, predicted) {
+        try {
+            const response = await fetch(operation.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(operation.body),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                const message = data.error || `request_failed_${response.status}`;
+                if (response.status >= 500) {
+                    await saveBallOnDevice(operation, predicted);
+                    return;
+                }
+                throw new Error(message);
+            }
+
+            data.match.lastBallSnapshots = predicted.lastBallSnapshots;
+            preserveTeamLogos(data.match, match);
+            match = data.match;
+            window.MATCH = match;
+            team = match[match.currentInnings];
+            try {
+                await window.OfflineStore.saveSyncedMatch(operation.operationId, match);
+            } catch (storageError) {
+                console.error('synced_score_cache_failed', storageError);
+                alert(`The score was saved to the server, but this device could not refresh its local copy: ${storageError.message}`);
+            }
+            updateUndoBtn();
+            updateSyncNotice();
+            if (redirectToSessionIfDone(match)) return;
+            if (isInningsOver(team)) window.location.href = `/turfs/live/${matchId}`;
+        } catch (err) {
+            if (err instanceof TypeError || !navigator.onLine) {
+                await saveBallOnDevice(operation, predicted);
+                return;
+            }
+            console.error('score_request_failed', err);
+            alert(`The server rejected this score: ${err.message}`);
+            try { sessionStorage.setItem('scoreResyncMsg', 'A score could not be confirmed by the server. The match was refreshed.'); } catch (e) {}
+            window.location.reload();
         }
     }
 
@@ -92,11 +133,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         window.OfflineStore.getPendingBalls().then((rows) => {
             const count = rows.filter((row) => String(row.matchId) === String(matchId)).length;
+            const syncAction = match.tournamentId ? 'Sync & Award Turf MVP' : 'End Turf';
             notice.textContent = count
-                ? `${count} score ${count === 1 ? 'change is' : 'changes are'} saved on this device and waiting to sync. Click Award Turf MVP to sync.`
+                ? `${count} score ${count === 1 ? 'change is' : 'changes are'} saved on this device and waiting to sync. Click ${syncAction} or continue an online scoring action to sync.`
                 : '';
             notice.style.display = count ? '' : 'none';
         }).catch((err) => console.error('offline_queue_read_failed', err));
+    }
+
+    async function syncPendingMatchBalls() {
+        const pending = (await window.OfflineStore.getPendingBalls())
+            .filter((operation) => String(operation.matchId) === String(matchId));
+        if (!pending.length) return;
+        if (!navigator.onLine) throw new Error('Pending scores are saved on this device; reconnect before continuing this online action.');
+
+        for (let index = 0; index < pending.length; index++) {
+            const operation = pending[index];
+            const response = await fetch(operation.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(operation.body),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok || !result.match) {
+                throw new Error(result.error || `Could not sync saved score ${index + 1} of ${pending.length}.`);
+            }
+            await window.OfflineStore.saveSyncedMatch(operation.operationId, result.match);
+        }
     }
 
     function queueBall(body) {
@@ -108,10 +171,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         handleMatchUpdate(predicted, false);
         pendingBalls++;
-        requestChain = requestChain.then(() => saveBallOnDevice(fullBody, predicted));
+        const operation = createBallOperation(fullBody);
+        requestChain = requestChain.then(async () => {
+            const pending = (await window.OfflineStore.getPendingBalls())
+                .some((item) => String(item.matchId) === String(matchId));
+            if (!navigator.onLine) {
+                await saveBallOnDevice(operation, predicted);
+                return;
+            }
+            if (pending) {
+                try {
+                    await syncPendingMatchBalls();
+                } catch (err) {
+                    console.error('queued_score_sync_failed', err);
+                    await saveBallOnDevice(operation, predicted);
+                    return;
+                }
+            }
+            await sendBallToServer(operation, predicted);
+        }).catch((err) => {
+            console.error('score_queue_failed', err);
+            pendingBalls = Math.max(0, pendingBalls - 1);
+            alert(`Could not save this score: ${err.message}`);
+        });
     }
 
     async function postJson(url, body) {
+        await syncPendingMatchBalls();
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1053,6 +1139,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         const pool = team.bowling;
         openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
             try {
+                await requestChain;
                 const data = await postJson(`/turfs/live/${matchId}/setup`, {
                     innings: match.currentInnings,
                     bowlerId: id,

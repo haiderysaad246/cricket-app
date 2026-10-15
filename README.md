@@ -13,7 +13,7 @@ A full-stack web application for managing **Turf Cricket** players, teams, match
 
 Administrators can create player profiles and teams, schedule normal Turf matches or TCL tournament fixtures, and score matches live from a browser. Public pages allow people to view players, teams, tournament fixtures, points, scorecards, and live match information.
 
-Live scoring is designed to feel immediate: the browser applies a ball to the visible score first and saves it in IndexedDB on the device. Pending deliveries are sent to the backend only when an administrator clicks **Sync & Award Turf MVP** in a TCL tournament. That action syncs pending deliveries before it awards the MVP; it does not run automatically when connectivity returns. Team administration, match setup, and other non-delivery actions still require an internet connection.
+Live scoring is designed to feel immediate: online deliveries are saved to the server as soon as the scoring action is tapped; offline deliveries are saved in IndexedDB on the device. Pending deliveries sync only after an explicit user action, such as continuing an online scoring action, clicking **Sync & Award Turf MVP** in TCL, or clicking **End Turf**. They never sync automatically just because connectivity returns. Match setup and team administration still require an internet connection.
 
 Player profiles preserve cumulative Turf statistics, including TCL performances. Match records can be removed when folders or tournaments are deleted, while completed match statistics are saved to profiles first. Match MVP is awarded per match; Turf MVP is awarded once for a complete Turf session or TCL tournament.
 
@@ -24,8 +24,8 @@ Player profiles preserve cumulative Turf statistics, including TCL performances.
 - 🏏 **Turf sessions:** create sessions, configure teams and overs, and manage multiple matches.
 - 🏆 **TCL tournaments:** create tournament folders, schedule fixtures, track match stages, and display tournament information.
 - ⚡ **Live scoring:** record Turf-format runs, boundaries, wides, no-balls, wickets, run-outs, retirements, and other supported scoring events.
-- ⚡ **Optimistic scoring UI:** score updates render immediately, are queued locally in order, and sync on request.
-- 📵 **Offline ball scoring:** supported ball-by-ball deliveries are retained on the device until an administrator explicitly syncs from the TCL Turf MVP action.
+- ⚡ **Optimistic scoring UI:** score updates render immediately; online deliveries persist directly and offline deliveries queue locally for an explicit sync action.
+- 📵 **Offline ball scoring:** supported ball-by-ball deliveries are retained on the device until an administrator explicitly syncs from a scoring action, TCL Turf MVP award, or Turf end action.
 - 🔄 **Shared scoring rules:** browser and server use the same rules module to reduce differences in score calculation.
 - 📋 **Scorecards and Full Records:** view innings, player details, MVP information, and persisted ball-by-ball records grouped by innings and over.
 - 📈 **Points and progression:** tournament points tables, playoff progression, and optional Super Overs where enabled for a TCL tournament.
