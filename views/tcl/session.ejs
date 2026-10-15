@@ -54,13 +54,18 @@
                               onsubmit="return confirm('Award Turf MVP for this completed tournament? This can only be done once.');">
                             <button type="submit" class="toolbar-btn" <%= tournament.turfMvpAwarded ? 'disabled' : '' %>>
                                 <i class="fa-solid fa-star"></i>
-                                <span><%= tournament.turfMvpAwarded ? 'Turf MVP Awarded' : 'Award Turf MVP' %></span>
+                                <span><%= tournament.turfMvpAwarded ? 'Turf MVP Awarded' : 'Sync & Award Turf MVP' %></span>
                             </button>
                         </form>
                     </details>
                 <% } %>
             </div>
         </div>
+        <% if (isAdmin && !tournament.turfMvpAwarded) { %>
+            <p id="offlineSyncStatus" role="status" aria-live="polite">
+                Clicking <strong>Sync &amp; Award Turf MVP</strong> uploads saved match scores from this device before awarding the MVP.
+            </p>
+        <% } %>
         <div class="scorecard-tabs" id="turfStatTabs">
             <button type="button" class="scorecard-tab turf-stat-tab active" data-stat="matches">Matches</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="mvp"><i class="fa-solid fa-star"></i> MVP</button>
@@ -334,5 +339,52 @@
     </script>
 
     <%- include('../includes/scripts.ejs') %>
+    <% if (isAdmin && !tournament.turfMvpAwarded) { %>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.querySelector('form[action$="/turf-mvp"]');
+            const status = document.getElementById('offlineSyncStatus');
+            if (!form || !status) return;
+            let syncing = false;
+            form.addEventListener('submit', async (event) => {
+                if (form.dataset.syncComplete === 'true') return;
+                event.preventDefault();
+                if (syncing) return;
+                syncing = true;
+                const button = form.querySelector('button[type="submit"]');
+                button.disabled = true;
+                status.style.display = '';
+                try {
+                    if (!navigator.onLine) throw new Error('You are offline. Scores are still saved on this device; reconnect and click this button again.');
+                    const pending = await window.OfflineStore.getPendingBalls();
+                    for (let index = 0; index < pending.length; index++) {
+                        const operation = pending[index];
+                        status.textContent = `Syncing saved scores (${index + 1} of ${pending.length})…`;
+                        const response = await fetch(operation.url, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(operation.body),
+                        });
+                        const result = await response.json();
+                        if (!response.ok || !result.ok || !result.match) {
+                            throw new Error(result.error || `Could not sync a score (HTTP ${response.status}).`);
+                        }
+                        await window.OfflineStore.saveSyncedMatch(operation.operationId, result.match);
+                    }
+                    status.textContent = 'Scores synced. Saving the Turf MVP award…';
+                    form.dataset.syncComplete = 'true';
+                    form.submit();
+                } catch (error) {
+                    status.textContent = `Sync stopped: ${error.message} Remaining unsynced scores are kept on this device.`;
+                    button.disabled = false;
+                    syncing = false;
+                }
+            });
+        });
+    </script>
+    <% } %>
 </body>
 </html>

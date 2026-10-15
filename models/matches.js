@@ -74,6 +74,7 @@ const matchSchema = new Schema({
     team1TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     team2TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     lastBallSnapshots: { type: [Schema.Types.Mixed], default: [] },
+    processedOfflineOperationIds: { type: [String], default: [] },
     // Immutable delivery audit trail used by the live match Full Records tab.
     // Keep the original request payload so every scoring option remains
     // reconstructable even when a new event type is added.

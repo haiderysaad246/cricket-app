@@ -1,100 +1,104 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     let match = window.MATCH;
     if (!match) return; // not on the score page
     const matchId = match._id;
+    let pendingForMatch;
+    let localMatch;
+    try {
+        pendingForMatch = (await window.OfflineStore.getPendingBalls())
+            .filter((operation) => String(operation.matchId) === String(matchId));
+        localMatch = await window.OfflineStore.getMatch(matchId);
+    } catch (err) {
+        console.error('offline_storage_unavailable', err);
+        alert(`Offline scoring storage is unavailable: ${err.message}`);
+        return;
+    }
+    if (pendingForMatch.length && localMatch) {
+        match = localMatch.match;
+        window.MATCH = match;
+    } else {
+        await window.OfflineStore.saveMatch(match);
+    }
     let team = match[match.currentInnings];
     let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
 
     // ---- Optimistic scoring queue -----------------------------------
-    // Ball taps apply instantly in the browser using the exact same rules
-    // as the server (public/js/ballRules.js), and the network request goes
-    // out in the background through an ordered chain, so fast taps can
-    // never arrive at the server out of order. Undo/setup/end-innings stay
-    // as plain round-trips and just wait for this chain to drain first.
+    // Ball taps apply instantly using the same rules as the server and are
+    // saved locally until the user clicks Award Turf MVP to sync.
     let requestChain = Promise.resolve();
     let pendingBalls = 0;
-    let resyncTriggered = false;
     function isBusy() { return isSubmitting || pendingBalls > 0; }
-
-    // Only the fields the shared rules can actually predict — excludes
-    // statsAggregated (set server-side by aggregatePendingInningsStats,
-    // not part of the ball rules) so that alone never causes a mismatch.
-    function pickTeamForCompare(t) {
-        if (!t) return t;
-        const { statsAggregated, ...rest } = t;
-        return rest;
-    }
-    function statesMatch(serverMatch, predictedMatch) {
-        const pick = (m) => JSON.stringify({
-            team1: pickTeamForCompare(m.team1),
-            team2: pickTeamForCompare(m.team2),
-            currentInnings: m.currentInnings,
-            result: m.result,
-            winnerKey: m.winnerKey,
-            status: m.status,
-        });
-        return pick(serverMatch) === pick(predictedMatch);
-    }
-
-    // Server disagreed with our guess, or the request failed outright —
-    // drop everything still queued and reload straight from the server,
-    // with a small warning shown once the fresh page loads.
-    function resyncWithWarning(msg) {
-        if (resyncTriggered) return;
-        resyncTriggered = true;
-        try { sessionStorage.setItem('scoreResyncMsg', msg); } catch (e) {}
-        window.location.reload();
-    }
 
     function applyOptimistic(body) {
         const predicted = JSON.parse(JSON.stringify(match));
+        const snapshotTeam = predicted[predicted.currentInnings];
+        if (!snapshotTeam.overStarted) {
+            snapshotTeam.currentOverBalls = [];
+            snapshotTeam.currentOverRuns = 0;
+            snapshotTeam.overStarted = true;
+        }
+        if (!predicted.lastBallSnapshots) predicted.lastBallSnapshots = [];
+        predicted.lastBallSnapshots.push({
+            innings: predicted.currentInnings,
+            currentInnings: predicted.currentInnings,
+            team: JSON.parse(JSON.stringify(snapshotTeam)),
+            status: predicted.status,
+            result: predicted.result,
+            winnerKey: predicted.winnerKey,
+        });
+        if (predicted.lastBallSnapshots.length > 3) predicted.lastBallSnapshots.shift();
         const result = window.BallRules.applyBall(predicted, match.currentInnings, body);
         return result.ok ? predicted : null;
     }
 
-    async function sendBallInBackground(body, predicted) {
-        if (resyncTriggered) return;
+    async function saveBallOnDevice(body, predicted) {
         try {
-            const res = await fetch(`/turfs/live/${matchId}/ball`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-            if (!res.ok || !data.ok) {
-                const error = data.error || `request_failed_${res.status}`;
-                throw new Error(error);
+            const operationId = crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            await window.OfflineStore.saveBall({
+                operationId,
+                matchId: String(matchId),
+                url: `/turfs/live/${matchId}/ball`,
+                body: { ...body, _offlineOperationId: operationId },
+                createdAt: Date.now(),
+            }, predicted);
+            updateSyncNotice();
+            if (predicted.status === 'completed') {
+                if (predicted.tournamentId) {
+                    window.location.href = `/tcl/session/${predicted.tournamentId}`;
+                } else if (predicted.turfId) {
+                    window.location.href = `/turfs/session/${predicted.turfId}`;
+                }
             }
-            if (!statesMatch(data.match, predicted)) {
-                resyncWithWarning('Resynced with the server — a couple of taps needed a double-check.');
-                return;
-            }
-            // Confirmed — swap in the server's copy so ids/timestamps stay
-            // authoritative. Screen already shows this, so no re-render.
-            data.match.lastBallSnapshots = match.lastBallSnapshots;
-            preserveTeamLogos(data.match, match);
-            match = data.match;
-            window.MATCH = match;
-            team = match[match.currentInnings];
-            if (redirectToSessionIfDone(match)) return;
-            if (isInningsOver(team)) {
-                window.location.href = `/turfs/live/${matchId}`;
-                return;
-            }
-            updateUndoBtn();
         } catch (err) {
-            console.error('score_request_failed', err);
-            resyncWithWarning(
-                err.message === 'match_not_found'
-                    ? 'This match has already ended — refreshing the score.'
-                    : `Score was resynced after ${err.message || 'a server error'}.`
-            );
+            console.error('offline_score_save_failed', err);
+            alert(`This score could not be saved on this device: ${err.message}`);
+            try { sessionStorage.setItem('scoreResyncMsg', 'A score could not be saved on this device. Refresh and verify the match.'); } catch (e) {}
+            window.location.reload();
         } finally {
             pendingBalls = Math.max(0, pendingBalls - 1);
         }
     }
 
-    // Applies a ball instantly and sends it in the background, in order.
+    function updateSyncNotice() {
+        let notice = document.getElementById('offlineScoreNotice');
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.id = 'offlineScoreNotice';
+            notice.className = 'score-resync-toast';
+            notice.setAttribute('role', 'status');
+            document.body.appendChild(notice);
+        }
+        window.OfflineStore.getPendingBalls().then((rows) => {
+            const count = rows.filter((row) => String(row.matchId) === String(matchId)).length;
+            notice.textContent = count
+                ? `${count} score ${count === 1 ? 'change is' : 'changes are'} saved on this device and waiting to sync. Click Award Turf MVP to sync.`
+                : '';
+            notice.style.display = count ? '' : 'none';
+        }).catch((err) => console.error('offline_queue_read_failed', err));
+    }
+
     function queueBall(body) {
         const fullBody = { innings: match.currentInnings, ...body };
         const predicted = applyOptimistic(fullBody);
@@ -104,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         handleMatchUpdate(predicted, false);
         pendingBalls++;
-        requestChain = requestChain.then(() => sendBallInBackground(fullBody, predicted));
+        requestChain = requestChain.then(() => saveBallOnDevice(fullBody, predicted));
     }
 
     async function postJson(url, body) {
@@ -853,12 +857,32 @@ scorePadCloseBtn.addEventListener('click', () => {
         isSubmitting = true;
         scorePadUndoBtn.disabled = true;
         try {
-            await requestChain; // let any queued-but-unsent balls land first
+            await requestChain;
+            const pending = (await window.OfflineStore.getPendingBalls())
+                .filter((operation) => String(operation.matchId) === String(matchId));
+            if (pending.length) {
+                const operation = pending[pending.length - 1];
+                const updated = JSON.parse(JSON.stringify(match));
+                const snapshot = updated.lastBallSnapshots.pop();
+                if (!snapshot) throw new Error('There is no saved delivery available to undo.');
+                updated[snapshot.innings] = snapshot.team;
+                updated.currentInnings = snapshot.currentInnings;
+                updated.status = snapshot.status || 'live';
+                updated.result = snapshot.result || null;
+                updated.winnerKey = snapshot.winnerKey || null;
+                await window.OfflineStore.removePendingBall(operation.operationId, updated);
+                sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + match.currentInnings);
+                sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + updated.currentInnings);
+                handleMatchUpdate(updated);
+                updateSyncNotice();
+                return;
+            }
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
             sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + match.currentInnings);
             sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + data.match.currentInnings);
             handleMatchUpdate(data.match); // redraws in place, also when it goes back to the previous innings
         } catch (err) {
+            alert(err.message || 'Could not undo the last ball.');
             scorePadUndoBtn.disabled = false;
         } finally {
             isSubmitting = false;
@@ -1017,6 +1041,9 @@ scorePadCloseBtn.addEventListener('click', () => {
 
     updateEditablePlayers();
     renderScorePad();
+    const summaryWrapper = document.getElementById('liveScoreSummaryWrapper');
+    if (summaryWrapper) summaryWrapper.innerHTML = renderLiveScoreSummary(match);
+    updateSyncNotice();
 
     function promptNextBowler() {
         const cancelBtn = document.getElementById('cancelCardPicker');

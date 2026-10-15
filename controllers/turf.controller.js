@@ -54,6 +54,7 @@ function respond(req, res, { json, redirect, status = 200 }) {
 function matchForBallResponse(match) {
     const json = match.toObject ? match.toObject() : JSON.parse(JSON.stringify(match));
     delete json.lastBallSnapshots;
+    delete json.processedOfflineOperationIds;
     return json;
 }
 function playerName(team, id) {
@@ -884,9 +885,19 @@ exports.endInnings = async (req, res) => {
 };
 exports.recordBall = async (req, res) => {
     try {
-        const match = await Match.findOne({ _id: req.params.id, status: "live" });
+        const { _offlineOperationId: operationId, ...body } = req.body;
+        if (operationId && (typeof operationId !== "string" || operationId.length > 120)) {
+            return res.status(400).json({ error: "invalid_operation_id" });
+        }
+        const match = operationId
+            ? await Match.findById(req.params.id)
+            : await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
-        const { innings, type } = req.body;
+        if (operationId && match.processedOfflineOperationIds.includes(operationId)) {
+            return res.json({ ok: true, match: matchForBallResponse(match) });
+        }
+        if (match.status !== "live") return res.status(404).json({ error: "match_not_found" });
+        const { innings, type } = body;
         if (!["team1", "team2"].includes(innings)) {
             return res.status(400).json({ error: "invalid_innings" });
         }
@@ -916,9 +927,10 @@ exports.recordBall = async (req, res) => {
         // the same file the browser uses for optimistic scoring — so the
         // two can never drift apart.
         const beforeTeam = JSON.parse(JSON.stringify(team));
-        const result = applyBall(match, innings, req.body);
+        const result = applyBall(match, innings, body);
         if (!result.ok) return res.status(400).json({ error: result.error });
-        appendBallEvent(match, innings, req.body, beforeTeam);
+        appendBallEvent(match, innings, body, beforeTeam);
+        if (operationId) match.processedOfflineOperationIds.push(operationId);
 
         if (type !== "retire") {
             await aggregatePendingInningsStats(match);
