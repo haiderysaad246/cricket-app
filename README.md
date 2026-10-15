@@ -198,6 +198,10 @@ npm run build
 
 The build is written to `client/dist/`. Express uses this build for the `/players` and `/teams` React application routes. The EJS pages handle TCL, points, and live scoring.
 
+### Install the app
+
+Deploy the site over HTTPS (localhost is also supported for development), then open it in a supported mobile browser. On Android/Chromium, use the **Install app** button when it appears and accept the browser prompt. On iPhone/iPad, tap **Install app** for instructions, then use the browser's Share menu and choose **Add to Home Screen**. Launching the installed app opens it in standalone mode without the browser address bar. Browser support and install prompts vary by platform.
+
 For React development with Vite hot reload, run:
 
 ```bash

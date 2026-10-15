@@ -1,7 +1,7 @@
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `cricket-shell-${VERSION}`;
 const RUNTIME_CACHE = `cricket-runtime-${VERSION}`;
-const PRECACHE = ["/players", "/teams", "/turfs", "/tcl", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
+const PRECACHE = ["/players", "/teams", "/turfs", "/tcl", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png", "/icons/apple-touch-icon.png"];
 const CDN = /(cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|res\.cloudinary\.com)$/;
 
 self.addEventListener("install", (event) => {

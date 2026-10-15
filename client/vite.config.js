@@ -23,6 +23,7 @@ export default defineConfig({
       "/manifest.json": BACKEND,
       "/service-worker.js": BACKEND,
       "/icons": BACKEND,
+      "/js": BACKEND,
     },
   },
   build: {
