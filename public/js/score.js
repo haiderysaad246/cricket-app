@@ -21,13 +21,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     let team = match[match.currentInnings];
     let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
+    let activeBowlerPrompt = false;
 
     // ---- Optimistic scoring queue -----------------------------------
     // Ball taps apply instantly using the same rules as the server and are
     // saved locally until the user clicks Award Turf MVP to sync.
     let requestChain = Promise.resolve();
     let pendingBalls = 0;
-    function isBusy() { return isSubmitting || pendingBalls > 0; }
+    // Ignore older replies when newer taps have already updated the score optimistically.
+    let optimisticRevision = 0;
+    function isBusy() { return isSubmitting || pendingBalls > 0 || activeBowlerPrompt; }
 
     function applyOptimistic(body) {
         const predicted = JSON.parse(JSON.stringify(match));
@@ -66,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveBallOnDevice(operation, predicted) {
         try {
-            await window.OfflineStore.saveBall(operation, predicted);
+            await window.OfflineStore.saveBall(operation, match || predicted);
             updateSyncNotice();
         } catch (err) {
             console.error('offline_score_save_failed', err);
@@ -78,7 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function sendBallToServer(operation, predicted) {
+    async function sendBallToServer(operation, predicted, revision) {
         try {
             const response = await fetch(operation.url, {
                 method: 'POST',
@@ -95,21 +98,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error(message);
             }
 
-            data.match.lastBallSnapshots = predicted.lastBallSnapshots;
-            preserveTeamLogos(data.match, match);
-            match = data.match;
-            window.MATCH = match;
-            team = match[match.currentInnings];
+            const latestMatch = revision === optimisticRevision ? data.match : match;
+            if (revision === optimisticRevision) {
+                data.match.lastBallSnapshots = predicted.lastBallSnapshots;
+                preserveTeamLogos(data.match, match);
+                match = data.match;
+                window.MATCH = match;
+                team = match[match.currentInnings];
+            }
             try {
-                await window.OfflineStore.saveSyncedMatch(operation.operationId, match);
+                await window.OfflineStore.saveSyncedMatch(operation.operationId, latestMatch);
             } catch (storageError) {
                 console.error('synced_score_cache_failed', storageError);
                 alert(`The score was saved to the server, but this device could not refresh its local copy: ${storageError.message}`);
             }
             updateUndoBtn();
             updateSyncNotice();
-            if (redirectToSessionIfDone(match)) return;
-            if (isInningsOver(team)) window.location.href = `/turfs/live/${matchId}`;
+            pendingBalls = Math.max(0, pendingBalls - 1);
+            if (revision === optimisticRevision) {
+                if (redirectToSessionIfDone(match)) return;
+                if (isInningsOver(team)) window.location.href = `/turfs/live/${matchId}`;
+            }
         } catch (err) {
             if (err instanceof TypeError || !navigator.onLine) {
                 await saveBallOnDevice(operation, predicted);
@@ -158,7 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!response.ok || !result.ok || !result.match) {
                 throw new Error(result.error || `Could not sync saved score ${index + 1} of ${pending.length}.`);
             }
-            await window.OfflineStore.saveSyncedMatch(operation.operationId, result.match);
+            await window.OfflineStore.saveSyncedMatch(operation.operationId, match);
         }
     }
 
@@ -172,6 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         handleMatchUpdate(predicted, false);
         pendingBalls++;
         const operation = createBallOperation(fullBody);
+        const revision = ++optimisticRevision;
         requestChain = requestChain.then(async () => {
             const pending = (await window.OfflineStore.getPendingBalls())
                 .some((item) => String(item.matchId) === String(matchId));
@@ -188,7 +198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return;
                 }
             }
-            await sendBallToServer(operation, predicted);
+            await sendBallToServer(operation, predicted, revision);
         }).catch((err) => {
             console.error('score_queue_failed', err);
             pendingBalls = Math.max(0, pendingBalls - 1);
@@ -446,13 +456,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         const storageKey = 'bowlerPrompted_' + matchId + '_' + match.currentInnings;
         if (team.legalBalls > 0 && team.legalBalls % 6 === 0 && !isInningsOver(team)) {
             const lastPromptedBalls = sessionStorage.getItem(storageKey);
-            if (String(team.legalBalls) !== lastPromptedBalls) {
-                sessionStorage.setItem(storageKey, String(team.legalBalls));
-                promptNextBowler();
+            const promptToken = `${team.legalBalls}:${team.currentBowlerId}`;
+            if (promptToken !== lastPromptedBalls && !activeBowlerPrompt) {
+                promptNextBowler(storageKey, team.legalBalls);
             }
         } else {
             sessionStorage.removeItem(storageKey);
         }
+    }
+
+    function promptNextBowler(storageKey, legalBalls) {
+        activeBowlerPrompt = true;
+        const cancelBtn = document.getElementById('cancelCardPicker');
+        const closeBtn = cardPickerCloseBtn;
+        cancelBtn.style.display = 'none';
+        closeBtn.style.display = 'none';
+        const pool = team.bowling.filter((player) => String(player.id) !== String(team.currentBowlerId));
+        if (!pool.length) {
+            activeBowlerPrompt = false;
+            cancelBtn.style.display = '';
+            closeBtn.style.display = '';
+            alert('No other bowler is available to start the next over.');
+            return;
+        }
+
+        openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
+            try {
+                await requestChain;
+                const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                    innings: match.currentInnings,
+                    bowlerId: id,
+                });
+                sessionStorage.setItem(storageKey, `${legalBalls}:${id}`);
+                activeBowlerPrompt = false;
+                cancelBtn.style.display = '';
+                closeBtn.style.display = '';
+                handleMatchUpdate(data.match);
+            } catch (err) {
+                console.error('next_bowler_save_failed', err);
+                alert(`Could not save the next bowler. Please try again. ${err.message || ''}`.trim());
+                activeBowlerPrompt = false;
+                cancelBtn.style.display = 'none';
+                closeBtn.style.display = 'none';
+                checkOverAndPromptBowler();
+            }
+        });
     }
 
     function handleMatchUpdate(updatedMatch, allowRedirect = true) {
@@ -1130,30 +1178,6 @@ scorePadCloseBtn.addEventListener('click', () => {
     const summaryWrapper = document.getElementById('liveScoreSummaryWrapper');
     if (summaryWrapper) summaryWrapper.innerHTML = renderLiveScoreSummary(match);
     updateSyncNotice();
-
-    function promptNextBowler() {
-        const cancelBtn = document.getElementById('cancelCardPicker');
-        const closeBtn = cardPickerCloseBtn;
-        cancelBtn.style.display = 'none';
-        closeBtn.style.display = 'none';
-        const pool = team.bowling;
-        openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
-            try {
-                await requestChain;
-                const data = await postJson(`/turfs/live/${matchId}/setup`, {
-                    innings: match.currentInnings,
-                    bowlerId: id,
-                });
-                cancelBtn.style.display = '';
-                closeBtn.style.display = '';
-                handleMatchUpdate(data.match);
-            } catch (err) {
-                cancelBtn.style.display = '';
-                closeBtn.style.display = '';
-                console.error(err);
-            }
-        });
-    }
 
     checkOverAndPromptBowler();
 });

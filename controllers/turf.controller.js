@@ -439,7 +439,25 @@ exports.endMatch = async (req, res) => {
 };
 exports.cancelMatch = async (req, res) => {
     try {
-        const match = await Match.findByIdAndDelete(req.params.id);
+        const match = await Match.findById(req.params.id);
+        if (match) {
+            await reverseTeamStats(match, "team1");
+            await reverseTeamStats(match, "team2");
+            if (match.mvpAwarded) {
+                const ranked = computeMVP(match);
+                if (ranked.length) {
+                    const mvpPlayer = await Player.findById(ranked[0].id);
+                    if (mvpPlayer) {
+                        if (mvpPlayer.matchMvpCount < 1) {
+                            throw new Error(`match_mvp_count_not_reversible:${ranked[0].id}`);
+                        }
+                        mvpPlayer.matchMvpCount -= 1;
+                        await mvpPlayer.save();
+                    }
+                }
+            }
+            await Match.deleteOne({ _id: match._id });
+        }
         const redirectUrl = match && match.turfId
             ? "/turfs/session/" + match.turfId
             : (match && match.tournamentId ? "/tcl/session/" + match.tournamentId : "/turfs");
@@ -568,15 +586,18 @@ function maybeDeclareResult(match) {
 async function aggregateTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || team.statsAggregated) return;
-    await applyTeamStats(match, team, "turfStats");
+    await applyTeamStats(match, team, "turfStats", teamKey);
     team.statsAggregated = true;
 }
 
 // Applies one team's batting+bowling rows from a match into turfStats.
-async function applyTeamStats(match, team, statsKey) {
+async function applyTeamStats(match, team, statsKey, teamKey) {
     await Promise.all(team.batting.map(async (row) => {
         if (row.status === "yet_to_bat") return;
         const timesOut = row.status === "out" ? 1 : 0;
+        const playerBefore = await Player.findById(row.id).select("turfStats.batting.highest").lean();
+        if (!playerBefore) throw new Error(`player_not_found:${row.id}`);
+        row.highestBeforeMatch = playerBefore.turfStats?.batting?.highest || 0;
         const update = {
             $inc: {
                 [`${statsKey}.batting.matches`]: 1,
@@ -600,6 +621,7 @@ async function applyTeamStats(match, team, statsKey) {
         };
         await Player.updateOne({ _id: row.id }, { $set: derived });
     }));
+    match.markModified(`${teamKey}.batting`);
     await Promise.all(team.bowling.map(async (row) => {
         if (!row.balls && !row.runs && !row.wickets) return;
         const updated = await Player.findByIdAndUpdate(row.id, {
@@ -637,9 +659,8 @@ async function aggregatePendingInningsStats(match) {
     }
 }
 
-// Exact opposite of aggregateTeamStats — used by undo when the innings being
-// rolled back was already added to player profiles. (A career "highest
-// score" can't be rolled back; everything else can.)
+// Exact opposite of aggregateTeamStats — used by undo and match cancellation
+// when an innings was already added to player profiles.
 async function reverseTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || !team.statsAggregated) return;
@@ -652,6 +673,7 @@ async function reverseTeamStats(match, teamKey) {
             const b = player[statsKey].batting;
             const curTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
             const timesOut = row.status === "out" ? 1 : 0;
+            const previousHighest = row.highestBeforeMatch;
             const newTimesOut = Math.max(curTimesOut - timesOut, 0);
             b.matches = Math.max(b.matches - 1, 0);
             b.innings = Math.max(b.innings - 1, 0);
@@ -663,6 +685,23 @@ async function reverseTeamStats(match, teamKey) {
             if (timesOut && row.runs === 0) b.ducks = Math.max(b.ducks - 1, 0);
             b.strikeRate = b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0;
             b.average = newTimesOut > 0 ? Number((b.runs / newTimesOut).toFixed(2)) : b.runs;
+            if (row.runs >= b.highest && row.runs > 0) {
+                const priorMatches = await Match.find({
+                    _id: { $ne: match._id },
+                    $or: [
+                        { "team1.batting.id": row.id },
+                        { "team2.batting.id": row.id },
+                    ],
+                }).select("team1.batting team2.batting").lean();
+                const otherMatchHighest = priorMatches.reduce((highest, priorMatch) => {
+                    const scores = [...(priorMatch.team1.batting || []), ...(priorMatch.team2.batting || [])];
+                    return scores.reduce((max, score) =>
+                        String(score.id) === String(row.id) && score.status !== "yet_to_bat"
+                            ? Math.max(max, score.runs || 0)
+                            : max, highest);
+                }, 0);
+                b.highest = Math.max(previousHighest ?? 0, otherMatchHighest);
+            }
             player.markModified(statsKey);
             await player.save();
         }
@@ -675,6 +714,7 @@ async function reverseTeamStats(match, teamKey) {
             bw.wickets = Math.max(bw.wickets - (row.wickets || 0), 0);
             bw.ballsBowled = Math.max(bw.ballsBowled - (row.balls || 0), 0);
             bw.dots = Math.max(bw.dots - (row.dots || 0), 0);
+            bw.noBalls = Math.max(bw.noBalls - (row.noBalls || 0), 0);
             bw.runsConceded = Math.max(bw.runsConceded - (row.runs || 0), 0);
             bw.maidens = Math.max(bw.maidens - (row.maidens || 0), 0);
             bw.hatTricks = Math.max(bw.hatTricks - (row.hatTrick ? 1 : 0), 0);
@@ -787,8 +827,8 @@ exports.setupInnings = async (req, res) => {
         }
         if (bowlerId) {
             const previousBowlerId = team.currentBowlerId;
-            if (team.overStarted && previousBowlerId && String(previousBowlerId) !== String(bowlerId)) {
-                team.overSplit = true;
+            if (previousBowlerId && String(previousBowlerId) !== String(bowlerId)) {
+                if (team.overStarted) team.overSplit = true;
                 const previousBowler = playerName(team, previousBowlerId);
                 const nextBowler = playerName(team, bowlerId);
                 if (!match.ballEvents) match.ballEvents = [];

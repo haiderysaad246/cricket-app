@@ -11,6 +11,7 @@ const battingRowSchema = new Schema({
     dots: { type: Number, default: 0 },
     fours: { type: Number, default: 0 },
     sixes: { type: Number, default: 0 },
+    highestBeforeMatch: { type: Number, default: null },
     status: { type: String, enum: ["yet_to_bat", "batting", "out", "retired"], default: "yet_to_bat" },
     dismissalText: { type: String, default: null },
     battingOrder: { type: Number, default: null },
