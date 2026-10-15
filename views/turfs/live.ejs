@@ -21,7 +21,7 @@
                 </button>
             </form>
             <form action="/turfs/live/<%= match._id %>/cancel" method="POST"
-                  onsubmit="return confirm('Cancel this match? It will be deleted and its player profile stats will be rolled back. This cannot be undone.');">
+                  onsubmit="return confirm('Cancel this match? This deletes it and cannot be undone.');">
                 <button type="submit" class="toolbar-btn">
                     <i class="fa-solid fa-xmark"></i>
                     <span>Cancel Match</span>
@@ -143,7 +143,7 @@
         </div>
 
         <div class="scorecard-innings" id="innings-<%= firstInningsKey %>" style="<%= match.currentInnings !== firstInningsKey ? 'display:none;' : '' %>">
-            <%- include('./scorecard-innings.ejs', { battingTeam: match[firstInningsKey], bowlingTeamName: match[secondInningsKey].name, target: null, matchFinished: !!match.result }) %>
+            <%- include('./scorecard-innings.ejs', { battingTeam: match[firstInningsKey], bowlingTeamName: match[secondInningsKey].name, target: match.currentInnings === secondInningsKey ? (match[secondInningsKey].totalRuns || 0) + 1 : null, matchFinished: !!match.result }) %>
         </div>
 
         <div class="scorecard-innings" id="innings-<%= secondInningsKey %>" style="<%= match.currentInnings !== secondInningsKey ? 'display:none;' : '' %>">

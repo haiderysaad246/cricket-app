@@ -13,7 +13,7 @@ A full-stack web application for managing **Turf Cricket** players, teams, match
 
 Administrators can create player profiles and teams, schedule normal Turf matches or TCL tournament fixtures, and score matches live from a browser. Public pages allow people to view players, teams, tournament fixtures, points, scorecards, and live match information.
 
-Live scoring is designed to feel immediate: online deliveries are saved to the server as soon as the scoring action is tapped; offline deliveries are saved in IndexedDB on the device. Pending deliveries sync only after an explicit user action, such as continuing an online scoring action, clicking **Sync & Award Turf MVP** in TCL, or clicking **End Turf**. They never sync automatically just because connectivity returns. Match setup and team administration still require an internet connection.
+Live scoring is designed to feel immediate: the browser applies a ball to the visible score first, then persists it to the backend through an ordered request queue. The server uses the shared scoring rules and remains the source of truth. If a save fails or the browser and server disagree, the page can resynchronize from the saved match state.
 
 Player profiles preserve cumulative Turf statistics, including TCL performances. Match records can be removed when folders or tournaments are deleted, while completed match statistics are saved to profiles first. Match MVP is awarded per match; Turf MVP is awarded once for a complete Turf session or TCL tournament.
 
@@ -24,8 +24,7 @@ Player profiles preserve cumulative Turf statistics, including TCL performances.
 - 🏏 **Turf sessions:** create sessions, configure teams and overs, and manage multiple matches.
 - 🏆 **TCL tournaments:** create tournament folders, schedule fixtures, track match stages, and display tournament information.
 - ⚡ **Live scoring:** record Turf-format runs, boundaries, wides, no-balls, wickets, run-outs, retirements, and other supported scoring events.
-- ⚡ **Optimistic scoring UI:** score updates render immediately; online deliveries persist directly and offline deliveries queue locally for an explicit sync action.
-- 📵 **Offline ball scoring:** supported ball-by-ball deliveries are retained on the device until an administrator explicitly syncs from a scoring action, TCL Turf MVP award, or Turf end action.
+- ⚡ **Optimistic scoring UI:** score updates render immediately, while persistence requests are processed in order.
 - 🔄 **Shared scoring rules:** browser and server use the same rules module to reduce differences in score calculation.
 - 📋 **Scorecards and Full Records:** view innings, player details, MVP information, and persisted ball-by-ball records grouped by innings and over.
 - 📈 **Points and progression:** tournament points tables, playoff progression, and optional Super Overs where enabled for a TCL tournament.
@@ -197,10 +196,6 @@ npm run build
 ```
 
 The build is written to `client/dist/`. Express uses this build for the `/players` and `/teams` React application routes. The EJS pages handle TCL, points, and live scoring.
-
-### Install the app
-
-Deploy the site over HTTPS (localhost is also supported for development), then open it in a supported mobile browser. On Android/Chromium, use the **Install app** button when it appears and accept the browser prompt. On iPhone/iPad, tap **Install app** for instructions, then use the browser's Share menu and choose **Add to Home Screen**. Launching the installed app opens it in standalone mode without the browser address bar. Browser support and install prompts vary by platform.
 
 For React development with Vite hot reload, run:
 

@@ -51,22 +51,16 @@
                             <i class="fa-solid fa-ellipsis"></i>
                         </summary>
                         <form action="/tcl/session/<%= tournament._id %>/turf-mvp" method="POST"
-                              data-sync-pending-scores
-                              data-confirm="Award Turf MVP for this completed tournament? This can only be done once.">
+                              onsubmit="return confirm('Award Turf MVP for this completed tournament? This can only be done once.');">
                             <button type="submit" class="toolbar-btn" <%= tournament.turfMvpAwarded ? 'disabled' : '' %>>
                                 <i class="fa-solid fa-star"></i>
-                                <span><%= tournament.turfMvpAwarded ? 'Turf MVP Awarded' : 'Sync & Award Turf MVP' %></span>
+                                <span><%= tournament.turfMvpAwarded ? 'Turf MVP Awarded' : 'Award Turf MVP' %></span>
                             </button>
                         </form>
                     </details>
                 <% } %>
             </div>
         </div>
-        <% if (isAdmin && !tournament.turfMvpAwarded) { %>
-            <p id="offlineSyncStatus" role="status" aria-live="polite">
-                Pending scores on this device are sent to MongoDB when you click <strong>Sync &amp; Award Turf MVP</strong>.
-            </p>
-        <% } %>
         <div class="scorecard-tabs" id="turfStatTabs">
             <button type="button" class="scorecard-tab turf-stat-tab active" data-stat="matches">Matches</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="mvp"><i class="fa-solid fa-star"></i> MVP</button>

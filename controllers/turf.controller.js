@@ -54,7 +54,6 @@ function respond(req, res, { json, redirect, status = 200 }) {
 function matchForBallResponse(match) {
     const json = match.toObject ? match.toObject() : JSON.parse(JSON.stringify(match));
     delete json.lastBallSnapshots;
-    delete json.processedOfflineOperationIds;
     return json;
 }
 function playerName(team, id) {
@@ -439,25 +438,7 @@ exports.endMatch = async (req, res) => {
 };
 exports.cancelMatch = async (req, res) => {
     try {
-        const match = await Match.findById(req.params.id);
-        if (match) {
-            await reverseTeamStats(match, "team1");
-            await reverseTeamStats(match, "team2");
-            if (match.mvpAwarded) {
-                const ranked = computeMVP(match);
-                if (ranked.length) {
-                    const mvpPlayer = await Player.findById(ranked[0].id);
-                    if (mvpPlayer) {
-                        if (mvpPlayer.matchMvpCount < 1) {
-                            throw new Error(`match_mvp_count_not_reversible:${ranked[0].id}`);
-                        }
-                        mvpPlayer.matchMvpCount -= 1;
-                        await mvpPlayer.save();
-                    }
-                }
-            }
-            await Match.deleteOne({ _id: match._id });
-        }
+        const match = await Match.findByIdAndDelete(req.params.id);
         const redirectUrl = match && match.turfId
             ? "/turfs/session/" + match.turfId
             : (match && match.tournamentId ? "/tcl/session/" + match.tournamentId : "/turfs");
@@ -586,18 +567,15 @@ function maybeDeclareResult(match) {
 async function aggregateTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || team.statsAggregated) return;
-    await applyTeamStats(match, team, "turfStats", teamKey);
+    await applyTeamStats(match, team, "turfStats");
     team.statsAggregated = true;
 }
 
 // Applies one team's batting+bowling rows from a match into turfStats.
-async function applyTeamStats(match, team, statsKey, teamKey) {
+async function applyTeamStats(match, team, statsKey) {
     await Promise.all(team.batting.map(async (row) => {
         if (row.status === "yet_to_bat") return;
         const timesOut = row.status === "out" ? 1 : 0;
-        const playerBefore = await Player.findById(row.id).select("turfStats.batting.highest").lean();
-        if (!playerBefore) throw new Error(`player_not_found:${row.id}`);
-        row.highestBeforeMatch = playerBefore.turfStats?.batting?.highest || 0;
         const update = {
             $inc: {
                 [`${statsKey}.batting.matches`]: 1,
@@ -621,7 +599,6 @@ async function applyTeamStats(match, team, statsKey, teamKey) {
         };
         await Player.updateOne({ _id: row.id }, { $set: derived });
     }));
-    match.markModified(`${teamKey}.batting`);
     await Promise.all(team.bowling.map(async (row) => {
         if (!row.balls && !row.runs && !row.wickets) return;
         const updated = await Player.findByIdAndUpdate(row.id, {
@@ -659,8 +636,9 @@ async function aggregatePendingInningsStats(match) {
     }
 }
 
-// Exact opposite of aggregateTeamStats — used by undo and match cancellation
-// when an innings was already added to player profiles.
+// Exact opposite of aggregateTeamStats — used by undo when the innings being
+// rolled back was already added to player profiles. (A career "highest
+// score" can't be rolled back; everything else can.)
 async function reverseTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || !team.statsAggregated) return;
@@ -673,7 +651,6 @@ async function reverseTeamStats(match, teamKey) {
             const b = player[statsKey].batting;
             const curTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
             const timesOut = row.status === "out" ? 1 : 0;
-            const previousHighest = row.highestBeforeMatch;
             const newTimesOut = Math.max(curTimesOut - timesOut, 0);
             b.matches = Math.max(b.matches - 1, 0);
             b.innings = Math.max(b.innings - 1, 0);
@@ -685,23 +662,6 @@ async function reverseTeamStats(match, teamKey) {
             if (timesOut && row.runs === 0) b.ducks = Math.max(b.ducks - 1, 0);
             b.strikeRate = b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0;
             b.average = newTimesOut > 0 ? Number((b.runs / newTimesOut).toFixed(2)) : b.runs;
-            if (row.runs >= b.highest && row.runs > 0) {
-                const priorMatches = await Match.find({
-                    _id: { $ne: match._id },
-                    $or: [
-                        { "team1.batting.id": row.id },
-                        { "team2.batting.id": row.id },
-                    ],
-                }).select("team1.batting team2.batting").lean();
-                const otherMatchHighest = priorMatches.reduce((highest, priorMatch) => {
-                    const scores = [...(priorMatch.team1.batting || []), ...(priorMatch.team2.batting || [])];
-                    return scores.reduce((max, score) =>
-                        String(score.id) === String(row.id) && score.status !== "yet_to_bat"
-                            ? Math.max(max, score.runs || 0)
-                            : max, highest);
-                }, 0);
-                b.highest = Math.max(previousHighest ?? 0, otherMatchHighest);
-            }
             player.markModified(statsKey);
             await player.save();
         }
@@ -714,7 +674,6 @@ async function reverseTeamStats(match, teamKey) {
             bw.wickets = Math.max(bw.wickets - (row.wickets || 0), 0);
             bw.ballsBowled = Math.max(bw.ballsBowled - (row.balls || 0), 0);
             bw.dots = Math.max(bw.dots - (row.dots || 0), 0);
-            bw.noBalls = Math.max(bw.noBalls - (row.noBalls || 0), 0);
             bw.runsConceded = Math.max(bw.runsConceded - (row.runs || 0), 0);
             bw.maidens = Math.max(bw.maidens - (row.maidens || 0), 0);
             bw.hatTricks = Math.max(bw.hatTricks - (row.hatTrick ? 1 : 0), 0);
@@ -827,8 +786,8 @@ exports.setupInnings = async (req, res) => {
         }
         if (bowlerId) {
             const previousBowlerId = team.currentBowlerId;
-            if (previousBowlerId && String(previousBowlerId) !== String(bowlerId)) {
-                if (team.overStarted) team.overSplit = true;
+            if (team.overStarted && previousBowlerId && String(previousBowlerId) !== String(bowlerId)) {
+                team.overSplit = true;
                 const previousBowler = playerName(team, previousBowlerId);
                 const nextBowler = playerName(team, bowlerId);
                 if (!match.ballEvents) match.ballEvents = [];
@@ -925,19 +884,9 @@ exports.endInnings = async (req, res) => {
 };
 exports.recordBall = async (req, res) => {
     try {
-        const { _offlineOperationId: operationId, ...body } = req.body;
-        if (operationId && (typeof operationId !== "string" || operationId.length > 120)) {
-            return res.status(400).json({ error: "invalid_operation_id" });
-        }
-        const match = operationId
-            ? await Match.findById(req.params.id)
-            : await Match.findOne({ _id: req.params.id, status: "live" });
+        const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
-        if (operationId && match.processedOfflineOperationIds.includes(operationId)) {
-            return res.json({ ok: true, match: matchForBallResponse(match) });
-        }
-        if (match.status !== "live") return res.status(404).json({ error: "match_not_found" });
-        const { innings, type } = body;
+        const { innings, type } = req.body;
         if (!["team1", "team2"].includes(innings)) {
             return res.status(400).json({ error: "invalid_innings" });
         }
@@ -967,10 +916,9 @@ exports.recordBall = async (req, res) => {
         // the same file the browser uses for optimistic scoring — so the
         // two can never drift apart.
         const beforeTeam = JSON.parse(JSON.stringify(team));
-        const result = applyBall(match, innings, body);
+        const result = applyBall(match, innings, req.body);
         if (!result.ok) return res.status(400).json({ error: result.error });
-        appendBallEvent(match, innings, body, beforeTeam);
-        if (operationId) match.processedOfflineOperationIds.push(operationId);
+        appendBallEvent(match, innings, req.body, beforeTeam);
 
         if (type !== "retire") {
             await aggregatePendingInningsStats(match);

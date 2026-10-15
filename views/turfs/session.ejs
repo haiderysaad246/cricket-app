@@ -39,8 +39,8 @@
                             <i class="fa-solid fa-plus"></i>
                             <span>Add Match</span>
                         </button>
-                        <form action="/turfs/session/<%= turf._id %>/end" method="POST" data-sync-pending-scores
-                              data-confirm="End this turf? This permanently deletes it. This cannot be undone.">
+                        <form action="/turfs/session/<%= turf._id %>/end" method="POST"
+                              onsubmit="return confirm('End this turf? This permanently deletes it. This cannot be undone.');">
                             <button type="submit" class="toolbar-btn toolbar-btn-danger">
                                 <i class="fa-solid fa-flag-checkered"></i>
                                 <span>End Turf</span>
@@ -58,8 +58,8 @@
                             <i class="fa-solid fa-gear"></i>
                             <span>Change Settings</span>
                         </button>
-                        <form action="/turfs/session/<%= turf._id %>/end" method="POST" data-sync-pending-scores
-                              data-confirm="End this turf? This rolls all match stats into player profiles and permanently deletes the turf and its matches. This cannot be undone.">
+                        <form action="/turfs/session/<%= turf._id %>/end" method="POST"
+                              onsubmit="return confirm('End this turf? This rolls all match stats into player profiles and permanently deletes the turf and its matches. This cannot be undone.');">
                             <button type="submit" class="toolbar-btn toolbar-btn-danger">
                                 <i class="fa-solid fa-flag-checkered"></i>
                                 <span>End Turf</span>
@@ -69,12 +69,6 @@
                 <% } %>
             </div>
         </div>
-
-        <% if (isAdmin) { %>
-            <p id="offlineSyncStatus" role="status" aria-live="polite">
-                Pending scores on this device are sent to MongoDB when you click <strong>End Turf</strong>.
-            </p>
-        <% } %>
 
         <div class="scorecard-tabs" id="turfStatTabs">
             <button type="button" class="scorecard-tab turf-stat-tab active" data-stat="matches">Matches</button>

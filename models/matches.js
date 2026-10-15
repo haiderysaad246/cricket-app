@@ -11,7 +11,6 @@ const battingRowSchema = new Schema({
     dots: { type: Number, default: 0 },
     fours: { type: Number, default: 0 },
     sixes: { type: Number, default: 0 },
-    highestBeforeMatch: { type: Number, default: null },
     status: { type: String, enum: ["yet_to_bat", "batting", "out", "retired"], default: "yet_to_bat" },
     dismissalText: { type: String, default: null },
     battingOrder: { type: Number, default: null },
@@ -75,7 +74,6 @@ const matchSchema = new Schema({
     team1TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     team2TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     lastBallSnapshots: { type: [Schema.Types.Mixed], default: [] },
-    processedOfflineOperationIds: { type: [String], default: [] },
     // Immutable delivery audit trail used by the live match Full Records tab.
     // Keep the original request payload so every scoring option remains
     // reconstructable even when a new event type is added.
