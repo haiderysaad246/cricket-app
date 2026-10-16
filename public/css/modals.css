@@ -383,8 +383,11 @@
     }
 
     .picker-modal {
+        box-sizing: border-box;
+        width: calc(100% - 15px);
         max-height: none;
         overflow: visible;
+        padding: 14px 16px;
     }
 
     .picker-modal .ig-picker-grid {
