@@ -13,6 +13,7 @@ const turfRoutes = require("./routes/turf.routes");
 const tclRoutes = require("./routes/tcl.routes");
 const pointsRoutes = require("./routes/points.routes");
 const authRoutes = require("./routes/auth.routes");
+const mobileRoutes = require("./routes/mobile.routes");
 const { attachRole, requireAdmin } = require("./middlewares/auth.middleware");
 
 const app = express();
@@ -36,6 +37,17 @@ app.use(express.static(path.join(__dirname, "public"), {
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use("/api/mobile", (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ["https://localhost", "capacitor://localhost"].includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 app.use(attachRole);
 
 // Make the current URL path available in every EJS template as `currentPath`
@@ -46,6 +58,7 @@ app.use((req, res, next) => {
 
 app.use("/", authRoutes);
 app.use("/", pageRoutes);
+app.use("/api/mobile", mobileRoutes);
 app.use("/api/players", playersApiRoutes);
 app.use("/api/teams", teamsApiRoutes); // JSON API for React — admin-gated per-route (create/edit/delete), like players
 app.use("/api/turfs", requireAdmin, turfRoutes); // JSON API for React (content-negotiated)

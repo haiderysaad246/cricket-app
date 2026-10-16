@@ -206,6 +206,20 @@ npm run dev
 
 Vite runs on port `5173` and proxies configured API, authentication, and static requests to the backend at `http://localhost:3000`. Keep the backend running in a separate terminal.
 
+### Android offline scorer
+
+The Capacitor Android app can download a live match while online, store ball-by-ball scoring and innings setup locally in SQLite, then upload queued actions only when an administrator taps **Sync**. The existing Render/Express/MongoDB website remains the server of record. Only one device should score a match while offline.
+
+To build a debug APK on a machine with Android Studio, the Android SDK, and Java installed:
+
+```bash
+cd client
+npm install
+npm run android:debug
+```
+
+The APK is written to `client/android/app/build/outputs/apk/debug/app-debug.apk`. Install it on an Android device, sign in using the HTTPS URL of the deployed website and the admin password, then download the live match before going offline. iOS and offline management of players, teams, and tournaments are not included.
+
 ### 5. 🧪 Try It
 
 1. Start MongoDB and the backend.
