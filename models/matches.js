@@ -24,6 +24,7 @@ const bowlingRowSchema = new Schema({
     balls: { type: Number, default: 0 },
     noBalls: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
+    overs: { type: Number, default: 0 },
     maidens: { type: Number, default: 0 },
     runs: { type: Number, default: 0 },
     wickets: { type: Number, default: 0 },
@@ -41,6 +42,7 @@ const teamStateSchema = new Schema({
     strikerId: { type: Schema.Types.ObjectId, ref: "players", default: null },
     nonStrikerId: { type: Schema.Types.ObjectId, ref: "players", default: null },
     currentBowlerId: { type: Schema.Types.ObjectId, ref: "players", default: null },
+    currentOverBowlerId: { type: Schema.Types.ObjectId, ref: "players", default: null },
     keeperId: { type: Schema.Types.ObjectId, ref: "players", default: null },
     keeperName: { type: String, default: null },
     legalBalls: { type: Number, default: 0 },
@@ -74,6 +76,7 @@ const matchSchema = new Schema({
     team1TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     team2TeamId: { type: Schema.Types.ObjectId, ref: "teams", default: null },
     lastBallSnapshots: { type: [Schema.Types.Mixed], default: [] },
+    redoBallSnapshots: { type: [Schema.Types.Mixed], default: [] },
     // Immutable delivery audit trail used by the live match Full Records tab.
     // Keep the original request payload so every scoring option remains
     // reconstructable even when a new event type is added.

@@ -21,7 +21,7 @@
                 id: key, name, image,
                 runs: 0, balls: 0, fours: 0, sixes: 0, dismissals: 0,
                 wickets: 0, ballsBowled: 0, runsConceded: 0,
-                catches: 0, mvpPts: 0,
+                catches: 0, mvpPts: 0, matchMvpCount: 0,
             });
         }
         return map.get(key);
@@ -67,10 +67,16 @@
             });
             if (window.CricketMVP) {
                 try {
-                    window.CricketMVP.computeMVP(match).forEach((mp) => {
+                    const ranked = window.CricketMVP.computeMVP(match);
+                    ranked.forEach((mp) => {
                         const p = bucket(players, mp.id, mp.name, mp.image);
                         p.mvpPts += mp.totalPts;
                     });
+                    if (match.status === 'completed') {
+                        window.CricketMVP.getMatchMVPs(match, ranked).forEach((matchMvp) => {
+                            bucket(players, matchMvp.id, matchMvp.name, matchMvp.image).matchMvpCount += 1;
+                        });
+                    }
                 } catch (e) { /* skip a malformed match rather than breaking the whole page */ }
             }
         });
@@ -84,11 +90,26 @@
     const MIN_BALLS_BOWLED = 6;
 
     const STAT_DEFS = {
-        mvp: { title: 'MVP Leaderboard', unit: 'Pts', filter: () => true, sort: (a, b) => b.mvpPts - a.mvpPts, value: (p) => fmt(p.mvpPts) },
+        mvp: {
+            title: 'MVP Leaderboard', unit: 'Pts', filter: (p) => p.matchMvpCount > 0,
+            sort: (a, b) => (b.mvpPts - a.mvpPts) || (b.matchMvpCount - a.matchMvpCount),
+            value: (p) => fmt(p.mvpPts),
+        },
         runs: { title: 'Most Runs', unit: 'Runs', filter: (p) => p.runs > 0, sort: (a, b) => b.runs - a.runs, value: (p) => p.runs },
         sixes: { title: 'Most Sixes', unit: 'Sixes', filter: (p) => p.sixes > 0, sort: (a, b) => b.sixes - a.sixes, value: (p) => p.sixes },
         fours: { title: 'Most Fours', unit: 'Fours', filter: (p) => p.fours > 0, sort: (a, b) => b.fours - a.fours, value: (p) => p.fours },
         wickets: { title: 'Most Wickets', unit: 'Wkts', filter: (p) => p.wickets > 0, sort: (a, b) => b.wickets - a.wickets, value: (p) => p.wickets },
+        runsconceded: {
+            title: 'Most Runs Conceded by Bowlers (including wides and no-balls)',
+            unit: 'Runs',
+            filter: (p) => p.runsConceded > 0,
+            sort: (a, b) => b.runsConceded - a.runsConceded,
+            value: (p) => p.runsConceded,
+            extraColumns: [
+                { header: 'Overs', value: (p) => `${Math.floor(p.ballsBowled / 6)}.${p.ballsBowled % 6}` },
+                { header: 'Wkts', value: (p) => p.wickets },
+            ],
+        },
         catches: { title: 'Most Catches', unit: 'Catches', filter: (p) => p.catches > 0, sort: (a, b) => b.catches - a.catches, value: (p) => p.catches },
         average: {
             title: 'Best Batting Average', unit: 'Avg',
@@ -116,7 +137,10 @@
         const rows = aggregate().filter(def.filter).sort(def.sort).slice(0, 15);
 
         if (!rows.length) {
-            statsContent.innerHTML = `<p style="text-align:center;color:#9ca3af;">No data yet for this stat.</p>`;
+            const message = kind === 'mvp'
+                ? 'No players have earned Match MVP yet.'
+                : 'No data yet for this stat.';
+            statsContent.innerHTML = `<p style="text-align:center;color:#9ca3af;">${message}</p>`;
             return;
         }
 
@@ -128,7 +152,8 @@
                         <thead>
                             <tr>
                                 <th class="col-player">Player</th>
-                                <th>${def.unit}</th>
+                                ${kind === 'mvp' ? '<th>Match MVPs</th><th>Points</th>' : `<th>${def.unit}</th>`}
+                                ${(def.extraColumns || []).map((column) => `<th>${column.header}</th>`).join('')}
                             </tr>
                         </thead>
                         <tbody>
@@ -143,7 +168,10 @@
                                             <span class="scorecard-player-name">${p.name}</span>
                                         </div>
                                     </td>
-                                    <td class="mvp-total">${def.value(p)}</td>
+                                    ${kind === 'mvp'
+                                        ? `<td class="mvp-total">${p.matchMvpCount}</td><td class="mvp-total">${def.value(p)}</td>`
+                                        : `<td class="mvp-total">${def.value(p)}</td>`}
+                                    ${(def.extraColumns || []).map((column) => `<td>${column.value(p)}</td>`).join('')}
                                 </tr>`).join('')}
                         </tbody>
                     </table>

@@ -123,4 +123,40 @@ function computeMVP(match) {
         .sort((a, b) => b.totalPts - a.totalPts);
 }
 
-module.exports = { computeMVP };
+function getMatchMVPs(match, ranked = computeMVP(match)) {
+    if (!match.result || !match.winnerKey || !ranked.length) return [];
+    const winnerName = match[match.winnerKey].name;
+    const topThree = ranked.slice(0, 3);
+    const playerOfMatch = topThree.find((player) => player.teamName === winnerName) || ranked[0];
+    return [playerOfMatch];
+}
+
+function computeSessionMVP(matches) {
+    const totals = new Map();
+    for (const match of matches) {
+        const ranked = computeMVP(match);
+        ranked.forEach((player) => {
+            if (!totals.has(player.id)) {
+                totals.set(player.id, {
+                    id: player.id,
+                    name: player.name,
+                    image: player.image,
+                    totalPts: 0,
+                    matchMvpCount: 0,
+                });
+            }
+            totals.get(player.id).totalPts += player.totalPts;
+        });
+        if (match.status === "completed") {
+            getMatchMVPs(match, ranked).forEach((matchMvp) => {
+                const player = totals.get(matchMvp.id);
+                if (player) player.matchMvpCount += 1;
+            });
+        }
+    }
+    return Array.from(totals.values())
+        .filter((player) => player.matchMvpCount > 0)
+        .sort((a, b) => (b.totalPts - a.totalPts) || (b.matchMvpCount - a.matchMvpCount));
+}
+
+module.exports = { computeMVP, getMatchMVPs, computeSessionMVP };

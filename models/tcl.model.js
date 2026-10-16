@@ -7,6 +7,7 @@ const { Schema } = mongoose;
 const tournamentSchema = new Schema({
     name: { type: String, required: true, trim: true },
     date: { type: String, trim: true, default: null },
+    overs: { type: Number, min: 1 },
     allowSuperOver: { type: Boolean, default: false },
     // Optional: maximum number of fixtures that can be scheduled inside
     // this tournament. When set, admins cannot add more matches than

@@ -82,3 +82,82 @@
 .tcl-toggle input:checked + .tcl-toggle-slider::after {
     transform: translateX(22px);
 }
+
+.tcl-team-matchup {
+    align-items: center;
+    display: flex;
+    gap: clamp(8px, 4vw, 24px);
+    justify-content: center;
+    margin: 8px 0 24px;
+}
+
+.tcl-team-carousel {
+    align-items: center;
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.tcl-team-cycle-btn {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--color-text-soft);
+    cursor: pointer;
+    display: flex;
+    font-size: 38px;
+    height: 36px;
+    justify-content: center;
+    padding: 0 16px;
+}
+
+.tcl-team-cycle-btn:hover,
+.tcl-team-cycle-btn:focus-visible {
+    color: var(--color-amber-alt);
+}
+
+.tcl-selected-team {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 100%;
+    text-align: center;
+}
+
+.tcl-selected-team-logo {
+    align-items: center;
+    background: var(--color-paper);
+    border: 2px solid var(--color-border);
+    border-radius: 50%;
+    display: flex;
+    height: clamp(84px, 22vw, 116px);
+    justify-content: center;
+    overflow: hidden;
+    width: clamp(84px, 22vw, 116px);
+}
+
+.tcl-selected-team-image {
+    height: 100%;
+    object-fit: contain;
+    padding: 8px;
+    width: 100%;
+}
+
+.tcl-selected-team-name {
+    color: var(--color-text-soft);
+    font-size: 14px;
+    font-weight: 700;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.tcl-matchup-vs {
+    color: var(--color-text-soft);
+    flex: 0 0 auto;
+    font-size: 20px;
+    font-weight: 800;
+}

@@ -72,7 +72,7 @@ const playerSchema = new Schema({
     // match's MVP points table).
     matchMvpCount: { type: Number, default: 0 },
     // How many whole turf sessions this player was crowned MVP of (highest
-    // combined MVP points across every match in that turf).
+    // combined MVP points among players with at least one Match MVP).
     turfMvpCount: { type: Number, default: 0 },
 });
 

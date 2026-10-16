@@ -21,16 +21,6 @@
        if (b === "4" || b === "6") return "over-ball-boundary";
        return "over-ball-normal";
    };
-   const ballRuns = (b) => {
-       if (b === "W") return 0;
-       const runoutMatch = b.match(/^(\d+)W$/);
-       if (runoutMatch) return Number(runoutMatch[1]);
-       if (b.startsWith("wd")) { const m = b.match(/^wd\+(\d+)/); return 1 + (m ? Number(m[1]) : 0); }
-       if (b.startsWith("nb")) { const m = b.match(/^nb\+(\d+)/); return 1 + (m ? Number(m[1]) : 0); }
-       const n = Number(b);
-       return isNaN(n) ? 0 : n;
-   };
-   const liveOverRuns = (liveTeam.currentOverBalls || []).reduce((sum, b) => sum + ballRuns(b), 0);
 %>
 <div class="live-score-card">
     <% if (match.result) { %>
@@ -109,9 +99,6 @@
                         <span class="live-over-empty">Over not started</span>
                     <% } %>
                 </div>
-                <% if ((liveTeam.currentOverBalls || []).length) { %>
-                    <div class="live-over-total">This over: <%= liveOverRuns %> run<%= liveOverRuns === 1 ? '' : 's' %></div>
-                <% } %>
             </div>
         </div>
 
@@ -144,8 +131,11 @@
                 <span class="live-footer-value"><%= liveExtras %> <span class="scorecard-extras-detail">(W <%= liveTeam.extraWides || 0 %>, NB <%= liveTeam.extraNoBalls || 0 %>) = <%= liveExtras %></span></span>
             </div>
             <div class="live-footer-item live-footer-item-right">
-                <span class="live-footer-label">Total</span>
-                <span class="live-footer-value"><%= liveTeam.totalRuns || 0 %>/<%= liveTeam.wickets || 0 %></span>
+                <% if (typeof showEndInningsButton !== 'undefined' && showEndInningsButton && match.status === 'live') { %>
+                    <button type="button" class="live-end-innings-btn" data-action="end-innings" title="End innings" aria-label="End innings">
+                        <i class="fa-solid fa-flag-checkered" aria-hidden="true"></i>
+                    </button>
+                <% } %>
             </div>
         </div>
     <% } %>

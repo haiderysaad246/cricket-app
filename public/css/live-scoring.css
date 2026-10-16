@@ -64,8 +64,28 @@
 .score-page-input-box .score-pad-close-btn {
     top: 12px;
     left: auto;
-    right: 12px;
+    right: 56px;
 }
+
+.score-pad-redo-btn {
+    position: absolute;
+    top: 12px;
+    left: auto;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background-color: #1a1a1a;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+}
+.score-pad-redo-btn:hover { background-color: rgba(255, 255, 255, 0.08); }
+.score-pad-redo-btn:disabled { cursor: default; opacity: 0.5; }
 
 .score-page-input-box .score-pad-grid {
     grid-template-columns: repeat(4, 1fr);
@@ -84,6 +104,23 @@
 }
 
 .score-pad-section-label:first-child { margin-top: 0; }
+
+.score-page-input-box .score-pad-grid .score-pad-btn {
+    transition: none;
+}
+
+.score-page-input-box .score-pad-grid .score-pad-btn:active:not([disabled]),
+.score-page-input-box .score-pad-grid .score-pad-btn.score-pad-btn-pressed {
+    background-color: #ff9d00;
+    border-color: #ff9d00;
+    color: #000000;
+    transition: none;
+}
+
+.score-page-input-box .score-pad-grid .score-pad-btn:active:not([disabled]) i,
+.score-page-input-box .score-pad-grid .score-pad-btn.score-pad-btn-pressed i {
+    color: #000000;
+}
 
 .score-pad-btn-muted {
     background-color: var(--color-surface-3);
@@ -297,13 +334,27 @@
 .over-ball-wicket { background-color: var(--bg-red-chip); color: var(--color-danger); border-radius: 6px; }
 .over-ball-extra { background-color: var(--bg-blue-chip); color: var(--color-blue); border-radius: 6px; min-width: 32px; }
 
-.live-over-total {
-    width: 100%;
-    text-align: right;
-    color: var(--color-text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    margin-top: 4px;
+.live-end-innings-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-top: 6px;
+    border: 1px solid var(--border-soft);
+    border-radius: 50%;
+    background: var(--color-surface-3);
+    color: var(--color-danger);
+    cursor: pointer;
+}
+
+.live-end-innings-btn:hover {
+    background: var(--color-surface-5);
+}
+
+.live-end-innings-btn:focus-visible {
+    outline: 2px solid var(--color-danger);
+    outline-offset: 2px;
 }
 
 .live-summary-footer {
@@ -440,10 +491,21 @@
 .records-over { background: var(--color-ink-light); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
 .records-over-heading { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
 .records-over-heading .live-over-balls { margin-left: auto; }
+.records-over-summary { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border-faint); }
+.records-over-batters, .records-over-bowlers { display: flex; flex-wrap: wrap; gap: 8px 16px; min-width: 0; }
+.records-over-bowlers { justify-content: flex-end; margin-left: auto; text-align: right; }
+.records-over-player { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.records-over-player strong { color: var(--color-text); font-size: 12px; overflow-wrap: anywhere; }
+.records-over-player span { color: var(--color-text-muted); font-size: 11px; }
 .records-over ol { margin: 7px 0 0; padding-left: 4.5rem; }
 .records-over li { padding: 4px 0; color: var(--color-text-soft); }
 .records-ball { display: inline-block; min-width: 3.5rem; margin-left: -3.5rem; color: var(--color-accent); font-weight: 700; }
 .records-empty { color: var(--color-text-muted); margin: 8px 0; }
+
+@media (max-width: 480px) {
+    .records-over-summary { flex-direction: column; }
+    .records-over-bowlers { justify-content: flex-start; margin-left: 0; text-align: left; }
+}
 
 .players-panel {
     display: grid;

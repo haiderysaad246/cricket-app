@@ -151,6 +151,11 @@
         return { potm, fotm };
     }
 
+    function getMatchMVPs(match, ranked = computeMVP(match)) {
+        const { potm, fotm } = pickTrophies(match, ranked);
+        return potm ? [potm] : [];
+    }
+
     function fmt(n) { return n.toFixed(2); }
 
     function renderTrophyCard(label, iconClass, player) {
@@ -224,5 +229,5 @@
     });
     document.addEventListener('match:updated', (e) => render(e.detail));
 
-    window.CricketMVP = { computeMVP };
+    window.CricketMVP = { computeMVP, getMatchMVPs };
 })();

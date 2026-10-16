@@ -19,6 +19,7 @@ router.post("/live/:id/wicket-limit", requireAdmin, turfController.setWicketLimi
 router.post("/live/:id/setup", requireAdmin, turfController.setupInnings);
 router.post("/live/:id/switch-innings", requireAdmin, turfController.switchInnings);
 router.post("/live/:id/undo", requireAdmin, turfController.undoLastBall);
+router.post("/live/:id/redo", requireAdmin, turfController.redoLastBall);
 router.post("/live/:id/ball", requireAdmin, turfController.recordBall);
 router.post("/live/:id/end-innings", requireAdmin, turfController.endInnings);
 

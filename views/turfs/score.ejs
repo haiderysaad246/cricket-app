@@ -11,12 +11,8 @@
                 <span>Back to Match</span>
             </a>
             </button>
-            <button type="button" class="toolbar-btn toolbar-btn-danger" id="endInningsBtn" style="margin-bottom:10px;">
-                <i class="fa-solid fa-flag-checkered"></i>
-                <span>End Innings</span>
-            </button>
             <div id="liveScoreSummaryWrapper">
-                <%- include('./includes/live-score-summary.ejs', { match }) %>
+                <%- include('./includes/live-score-summary.ejs', { match, showEndInningsButton: true }) %>
             </div>
         </div>
 
@@ -28,6 +24,9 @@
         <div class="score-page-input-box" id="scoreInputBox">
             <button type="button" class="score-pad-undo-btn" id="scorePadUndoBtn" title="Undo last ball" style="display:none;">
     <i class="fa-solid fa-rotate-left"></i>
+</button>
+<button type="button" class="score-pad-redo-btn" id="scorePadRedoBtn" title="Redo last ball" style="display:none;">
+    <i class="fa-solid fa-rotate-right"></i>
 </button>
 <button type="button" class="score-pad-close-btn" id="scorePadCloseBtn" title="Cancel — nothing will be recorded" style="display:none;">
     <i class="fa-solid fa-xmark"></i>

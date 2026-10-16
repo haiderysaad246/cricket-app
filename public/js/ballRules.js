@@ -232,6 +232,7 @@
         }
 
         if (legal) {
+            if (!team.currentOverBowlerId) team.currentOverBowlerId = bowler.id;
             if (creditedWicket) {
                 bowler.wicketStreak = (bowler.wicketStreak || 0) + 1;
                 if (bowler.wicketStreak >= 3) bowler.hatTrick = true;
@@ -239,8 +240,11 @@
         }
         if (legal && team.legalBalls % 6 === 0) {
             if (team.currentOverRuns === 0 && !team.overSplit) bowler.maidens += 1;
+            const overBowler = findRow(team.bowling, team.currentOverBowlerId);
+            if (overBowler) overBowler.overs = (overBowler.overs || 0) + 1;
             team.overStarted = false;
             team.overSplit = false;
+            team.currentOverBowlerId = null;
             rotateStrike(team);
         }
         autoSwitchInnings(match);

@@ -71,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // Confirmed — swap in the server's copy so ids/timestamps stay
             // authoritative. Screen already shows this, so no re-render.
-            data.match.lastBallSnapshots = match.lastBallSnapshots;
             preserveTeamLogos(data.match, match);
             match = data.match;
             window.MATCH = match;
@@ -102,6 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Something went wrong: invalid_ball');
             return;
         }
+        predicted.lastBallSnapshotCount = Math.min(historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots') + 1, 3);
+        predicted.redoBallSnapshotCount = 0;
         handleMatchUpdate(predicted, false);
         pendingBalls++;
         requestChain = requestChain.then(() => sendBallInBackground(fullBody, predicted));
@@ -185,17 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (b === '4' || b === '6') return 'over-ball-boundary';
             return 'over-ball-normal';
         };
-        const ballRuns = (b) => {
-            if (b === 'W') return 0;
-            const runoutMatch = b.match(/^(\d+)W$/);
-            if (runoutMatch) return Number(runoutMatch[1]);
-            if (b.startsWith('wd')) { const matchWd = b.match(/^wd\+(\d+)/); return 1 + (matchWd ? Number(matchWd[1]) : 0); }
-            if (b.startsWith('nb')) { const matchNb = b.match(/^nb\+(\d+)/); return 1 + (matchNb ? Number(matchNb[1]) : 0); }
-            const n = Number(b);
-            return isNaN(n) ? 0 : n;
-        };
-        const liveOverRuns = (liveTeam.currentOverBalls || []).reduce((sum, b) => sum + ballRuns(b), 0);
-
         let inplayHtml = '';
         if (liveBowler || liveStriker || liveNonStriker) {
             const battingIds = (liveTeam.batting || []).map((p) => String(p.id));
@@ -229,10 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="live-over-empty">Over not started</span>
             ` : '';
 
-            const overTotalHtml = (liveTeam.currentOverBalls || []).length ? `
-                <div class="live-over-total">This over: ${liveOverRuns} run${liveOverRuns === 1 ? '' : 's'}</div>
-            ` : '';
-
             let targetNeededHtml = '';
             if (liveTarget !== null && !m.result) {
                 const liveRunsNeeded = Math.max(liveTarget - (liveTeam.totalRuns || 0), 0);
@@ -254,7 +240,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${overBallsHtml}
                             ${overEmptyHtml}
                         </div>
-                        ${overTotalHtml}
                     </div>
                 </div>
 
@@ -272,8 +257,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="live-footer-value">${liveExtras} <span class="scorecard-extras-detail">(W ${liveTeam.extraWides || 0}, NB ${liveTeam.extraNoBalls || 0}) = ${liveExtras}</span></span>
                     </div>
                     <div class="live-footer-item live-footer-item-right">
-                        <span class="live-footer-label">Total</span>
-                        <span class="live-footer-value">${liveTeam.totalRuns || 0}/${liveTeam.wickets || 0}</span>
+                        ${m.status === 'live' ? `
+                            <button type="button" class="live-end-innings-btn" data-action="end-innings" title="End innings" aria-label="End innings">
+                                <i class="fa-solid fa-flag-checkered" aria-hidden="true"></i>
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -327,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function redirectToSessionIfDone(m) {
         if (m && m.status === 'completed') {
             if (m.tournamentId) {
-                window.location.href = `/tcl/session/${m.tournamentId}`;
+                window.location.href = `/tcl/session/${m.tournamentId}?addMatch=1`;
             } else if (m.turfId) {
                 window.location.href = `/turfs/session/${m.turfId}`;
             } else {
@@ -345,10 +333,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateUndoBtn() {
-        const undoCount = (match.lastBallSnapshots || []).length;
+        const undoCount = historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots');
         scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
         scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
         scorePadUndoBtn.disabled = false;
+
+        const redoCount = historyCount(match, 'redoBallSnapshotCount', 'redoBallSnapshots');
+        scorePadRedoBtn.style.display = redoCount > 0 ? '' : 'none';
+        scorePadRedoBtn.title = redoCount > 0 ? `Redo last ball (${redoCount} available)` : 'Redo last ball';
+        scorePadRedoBtn.disabled = false;
+    }
+
+    function historyCount(matchState, countKey, snapshotsKey) {
+        return Number.isInteger(matchState[countKey])
+            ? matchState[countKey]
+            : (matchState[snapshotsKey] || []).length;
     }
 
     function checkOverAndPromptBowler() {
@@ -365,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleMatchUpdate(updatedMatch, allowRedirect = true) {
+    function handleMatchUpdate(updatedMatch, allowRedirect = true, suppressBowlerPrompt = false) {
         if (!updatedMatch) return;
         if (allowRedirect && redirectToSessionIfDone(updatedMatch)) return;
 
@@ -389,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateEditablePlayers();
         abortInput();
         showPadOrSetup(isSetUp);
-        checkOverAndPromptBowler();
+        if (!suppressBowlerPrompt) checkOverAndPromptBowler();
     }
 
     function findRow(list, id) {
@@ -408,6 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const scorePadBackBar = document.getElementById('scorePadBackBar');
     const scorePadGrid = document.getElementById('scorePadGrid');
     const scorePadUndoBtn = document.getElementById('scorePadUndoBtn');
+    const scorePadRedoBtn = document.getElementById('scorePadRedoBtn');
     const scorePadCloseBtn = document.getElementById('scorePadCloseBtn');
     const cardPickerCloseBtn = document.getElementById('cardPickerCloseBtn');
 
@@ -545,16 +545,18 @@ function abortInput() {
         });
     }
 
-    const endInningsBtn = document.getElementById('endInningsBtn');
-    if (endInningsBtn) {
-        endInningsBtn.addEventListener('click', async () => {
-            if (!confirm('End this innings now with the current score? Use this only when there are no batsmen left to bring in.')) return;
+    document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (event) => {
+        if (!event.target.closest('[data-action="end-innings"]') || isBusy()) return;
+        if (!confirm('End this innings now with the current score? Use this only when there are no batsmen left to bring in.')) return;
+        try {
             const data = await postJson(`/turfs/live/${matchId}/end-innings`, {
                 innings: match.currentInnings,
             });
             handleMatchUpdate(data.match);
-        });
-    }
+        } catch (err) {
+            console.error('end_innings_failed', err);
+        }
+    });
 
     function pickOutPlayer(callback) {
         const strikerRow = findRow(team.batting, team.strikerId);
@@ -729,6 +731,9 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
 
         scorePadGrid.querySelectorAll('.score-pad-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
+                btn.classList.add('score-pad-btn-pressed');
+                setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 180);
+
                 // ---- root: parent nodes ----
                 // ---- root: parent nodes (Out / No Ball push a level,
                 // Wide submits immediately, Run Out opens its picker
@@ -855,9 +860,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         try {
             await requestChain; // let any queued-but-unsent balls land first
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
-            sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + match.currentInnings);
-            sessionStorage.removeItem('bowlerPrompted_' + matchId + '_' + data.match.currentInnings);
-            handleMatchUpdate(data.match); // redraws in place, also when it goes back to the previous innings
+            handleMatchUpdate(data.match, true, true); // don't prompt for a bowler while restoring a snapshot
         } catch (err) {
             scorePadUndoBtn.disabled = false;
         } finally {
@@ -865,6 +868,22 @@ scorePadCloseBtn.addEventListener('click', () => {
         }
     }
     scorePadUndoBtn.addEventListener('click', doUndo);
+
+    async function doRedo() {
+        if (isBusy()) return;
+        isSubmitting = true;
+        scorePadRedoBtn.disabled = true;
+        try {
+            await requestChain;
+            const data = await postJson(`/turfs/live/${matchId}/redo`, {});
+            handleMatchUpdate(data.match, true, true);
+        } catch (err) {
+            scorePadRedoBtn.disabled = false;
+        } finally {
+            isSubmitting = false;
+        }
+    }
+    scorePadRedoBtn.addEventListener('click', doRedo);
 
     // Tap the bowler's line to change the bowler, even mid-over.
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {

@@ -2,7 +2,7 @@ const Team = require("../models/team.model");
 const Match = require("../models/matches");
 const Tournament = require("../models/tcl.model");
 const Player = require("../models/player.model");
-const { computeMVP } = require("../utils/mvp");
+const { computeSessionMVP } = require("../utils/mvp");
 
 // ---- Points table computation (shared with points.controller.js) ----
 // Ranks teams by points (2 per win, 1 per tie), then NRR, then wins.
@@ -212,7 +212,7 @@ exports.maybeCreatePlayoffMatches = async (tournamentId) => {
     if (fixtures.length > 0 && fixtures.every((m) => m.status === "completed") && existingSemis.length === 0 && existingFinal.length === 0) {
         const table = await computePointsTable(tournamentId);
         const qualified = table.filter((t) => t.played > 0);
-        const overs = fixtures[0].overs;
+        const overs = tournament.overs || fixtures[0].overs;
         const format = getPlayoffFormat(qualified.length);
 
         if (format === "topper_bye") {
@@ -234,7 +234,7 @@ exports.maybeCreatePlayoffMatches = async (tournamentId) => {
     const semiWinners = await Promise.all(semis.map((m) => resolveWinner(m)));
     if (!semiWinners.every(Boolean)) return;
 
-    const overs = semis[0].overs;
+    const overs = tournament.overs || semis[0].overs;
 
     const table = await computePointsTable(tournamentId);
     const qualified = table.filter((t) => t.played > 0);
@@ -267,17 +267,20 @@ exports.index = async (req, res) => {
     }
 };
 
-// Creates an empty tournament folder — just name/date and its tie rule. Fixtures
-// (team vs team) get added afterwards from the session page.
+// Creates an empty tournament folder — fixtures (team vs team) get added
+// afterwards from the session page using these tournament-wide settings.
 exports.createTournament = async (req, res) => {
     try {
         const name = (req.body.name || "").trim();
         if (!name) return res.redirect("/tcl?error=name_required");
         const totalFixturesRaw = (req.body.totalFixtures || '').toString().trim();
         const totalFixturesNum = totalFixturesRaw ? Number(totalFixturesRaw) : null;
+        const overs = Number(req.body.overs);
+        if (!Number.isInteger(overs) || overs < 1) return res.redirect("/tcl?error=invalid_overs");
         const tournament = await Tournament.create({
             name,
             date: (req.body.date || "").trim() || null,
+            overs,
             allowSuperOver: req.body.allowSuperOver === "on",
             totalFixtures: Number.isFinite(totalFixturesNum) && totalFixturesNum > 0 ? totalFixturesNum : null,
         });
@@ -285,6 +288,37 @@ exports.createTournament = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.redirect("/tcl?error=create_failed");
+    }
+};
+
+exports.updateTournamentSettings = async (req, res) => {
+    const tournamentId = req.params.id;
+    try {
+        const tournament = await Tournament.findOne({ _id: tournamentId, status: "active" });
+        if (!tournament) return res.redirect("/tcl?error=not_found");
+        const overs = Number(req.body.overs);
+        if (!Number.isInteger(overs) || overs < 1) {
+            return res.redirect("/tcl/session/" + tournamentId + "?error=invalid_overs");
+        }
+
+        tournament.overs = overs;
+        tournament.allowSuperOver = req.body.allowSuperOver === "on";
+        await tournament.save();
+
+        const matches = await Match.find({ tournamentId, status: "live" });
+        await Promise.all(matches.map(async (match) => {
+            const started = !!(
+                match.team1.strikerId || match.team2.strikerId ||
+                match.team1.legalBalls || match.team2.legalBalls
+            );
+            if (started) return;
+            match.overs = overs;
+            await match.save();
+        }));
+        res.redirect("/tcl/session/" + tournamentId);
+    } catch (err) {
+        console.log(err);
+        res.redirect("/tcl/session/" + tournamentId + "?error=settings_failed");
     }
 };
 
@@ -352,13 +386,9 @@ exports.createMatch = async (req, res) => {
             }
         }
 
-        const { team1Id, team2Id, overs, battingFirst } = req.body;
+        const { team1Id, team2Id, battingFirst } = req.body;
         if (!team1Id || !team2Id || team1Id === team2Id) {
             return res.redirect("/tcl/session/" + tournamentId + "?error=teams_required");
-        }
-        const oversNum = Number(overs);
-        if (!Number.isFinite(oversNum) || oversNum < 1) {
-            return res.redirect("/tcl/session/" + tournamentId + "?error=invalid_overs");
         }
 
         const [team1, team2] = await Promise.all([
@@ -369,9 +399,14 @@ exports.createMatch = async (req, res) => {
             return res.redirect("/tcl/session/" + tournamentId + "?error=teams_required");
         }
 
+        const existingFixture = tournament.overs ? null : await Match.findOne({
+            tournamentId: tournament._id,
+            stage: "fixture",
+        }).sort({ createdAt: 1 }).select("overs").lean();
+        const overs = tournament.overs || existingFixture?.overs || 6;
         const battingFirstKey = battingFirst === "team2" ? "team2" : "team1";
-        await Match.create({
-            overs: oversNum,
+        const match = await Match.create({
+            overs,
             battingFirst: battingFirstKey,
             currentInnings: battingFirstKey,
             tournamentId: tournament._id,
@@ -394,15 +429,15 @@ exports.createMatch = async (req, res) => {
                 bowling: team1.players.map((p) => toBowlingRow(p, team1.captain?._id)),
             },
         });
-        res.redirect("/tcl/session/" + tournamentId);
+        res.redirect("/turfs/live/" + match._id);
     } catch (err) {
         console.log(err);
         res.redirect("/tcl/session/" + tournamentId + "?error=create_match_failed");
     }
 };
 
-// Lets the admin fix "who bats first" / overs on a fixture, but only until
-// scoring starts so no scored balls can end up out of sync.
+// Lets the admin fix who bats first on a fixture, but only until scoring
+// starts so no scored balls can end up out of sync. Overs are tournament-wide.
 exports.editMatch = async (req, res) => {
     const tournamentId = req.params.id;
     try {
@@ -414,13 +449,7 @@ exports.editMatch = async (req, res) => {
             return res.redirect("/tcl/session/" + tournamentId + "?error=match_started");
         }
 
-        const oversNum = Number(req.body.overs);
-        if (!Number.isFinite(oversNum) || oversNum < 1) {
-            return res.redirect("/tcl/session/" + tournamentId + "?error=invalid_overs");
-        }
-
         const battingFirstKey = req.body.battingFirst === "team2" ? "team2" : "team1";
-        match.overs = oversNum;
         match.battingFirst = battingFirstKey;
         match.currentInnings = battingFirstKey;
         await match.save();
@@ -446,13 +475,7 @@ exports.awardTournamentTurfMVP = async (req, res) => {
             return res.redirect("/tcl/session/" + tournamentId + "?error=matches_incomplete");
         }
 
-        const totals = new Map();
-        for (const match of matches) {
-            for (const player of computeMVP(match)) {
-                totals.set(player.id, (totals.get(player.id) || 0) + player.totalPts);
-            }
-        }
-        const winner = [...totals.entries()].sort((a, b) => b[1] - a[1])[0];
+        const winner = computeSessionMVP(matches)[0];
         if (!winner) {
             return res.redirect("/tcl/session/" + tournamentId + "?error=turf_mvp_unavailable");
         }
@@ -466,10 +489,10 @@ exports.awardTournamentTurfMVP = async (req, res) => {
             return res.redirect("/tcl/session/" + tournamentId + "?error=turf_mvp_already_awarded");
         }
 
-        const player = await Player.findByIdAndUpdate(winner[0], { $inc: { turfMvpCount: 1 } });
+        const player = await Player.findByIdAndUpdate(winner.id, { $inc: { turfMvpCount: 1 } });
         if (!player) {
             await Tournament.updateOne({ _id: tournamentId, turfMvpAwarded: true }, { $set: { turfMvpAwarded: false } });
-            throw new Error(`turf_mvp_player_not_found:${winner[0]}`);
+            throw new Error(`turf_mvp_player_not_found:${winner.id}`);
         }
         res.redirect("/tcl/session/" + tournamentId + "?turf_mvp=awarded");
     } catch (err) {

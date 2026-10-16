@@ -2,7 +2,7 @@ const Player = require("../models/player.model");
 const Match = require("../models/matches");
 const Turf = require("../models/turfs");
 const Counter = require("../models/counters");
-const { computeMVP } = require("../utils/mvp");
+const { computeMVP, computeSessionMVP } = require("../utils/mvp");
 const Team = require("../models/team.model");
 const Tournament = require("../models/tcl.model");
 const { maybeCreatePlayoffMatches, maybeCreateSuperOver } = require("./tcl.controller");
@@ -53,8 +53,15 @@ function respond(req, res, { json, redirect, status = 200 }) {
 }
 function matchForBallResponse(match) {
     const json = match.toObject ? match.toObject() : JSON.parse(JSON.stringify(match));
+    json.lastBallSnapshotCount = (json.lastBallSnapshots || []).length;
+    json.redoBallSnapshotCount = (json.redoBallSnapshots || []).length;
     delete json.lastBallSnapshots;
+    delete json.redoBallSnapshots;
     return json;
+}
+function clearRedoSnapshots(match) {
+    match.redoBallSnapshots = [];
+    match.markModified("redoBallSnapshots");
 }
 function playerName(team, id) {
     const row = (team.batting || []).concat(team.bowling || []).find((p) => String(p.id) === String(id));
@@ -143,6 +150,7 @@ function appendBallEvent(match, innings, body, beforeTeam) {
         sentence: ballSentence(beforeTeam, body),
         payload: JSON.parse(JSON.stringify(body)),
         striker: playerName(beforeTeam, beforeTeam.strikerId),
+        nonStriker: playerName(beforeTeam, beforeTeam.nonStrikerId),
         bowler: playerName(beforeTeam, beforeTeam.currentBowlerId),
         createdAt: new Date(),
     });
@@ -382,7 +390,7 @@ exports.showScorePad = async (req, res) => {
             // page instead of dumping the user on /turfs.
             const completed = await Match.findById(req.params.id).lean();
             const redirectUrl = completed && completed.tournamentId
-                ? "/tcl/session/" + completed.tournamentId
+                ? "/tcl/session/" + completed.tournamentId + "?addMatch=1"
                 : (completed && completed.turfId ? "/turfs/session/" + completed.turfId : "/turfs");
             return respond(req, res, { json: { error: "match_not_found" }, redirect: redirectUrl });
         }
@@ -427,7 +435,7 @@ exports.endMatch = async (req, res) => {
             await match.save();
         }
         const redirectUrl = match && match.tournamentId
-            ? "/tcl/session/" + match.tournamentId
+            ? "/tcl/session/" + match.tournamentId + "?addMatch=1"
             : (match && match.turfId ? "/turfs/session/" + match.turfId : "/turfs");
         await tryCreatePlayoffs(match);
         respond(req, res, { json: { ok: true }, redirect: redirectUrl });
@@ -455,6 +463,7 @@ exports.updateLive = async (req, res) => {
             return res.status(404).json({ error: "match_not_found_or_completed" });
         }
         Object.assign(match, req.body);
+        clearRedoSnapshots(match);
         await match.save();
         res.json({ ok: true, match });
     } catch (err) {
@@ -486,6 +495,7 @@ exports.setWicketLimit = async (req, res) => {
         }
         autoSwitchInnings(match);
         maybeDeclareResult(match);
+        clearRedoSnapshots(match);
         await aggregatePendingInningsStats(match);
         await awardMatchMVP(match);
         const justCompleted = match.status === "completed";
@@ -527,8 +537,9 @@ function autoSwitchInnings(match) {
 }
 // Declares the result as soon as the chase is decided — either the target
 // is reached (match ends immediately, doesn't wait for overs/all-out) or
-// the second innings ends level or short. Runs after every ball; a no-op
-// once match.result is already set, or before the second innings starts.
+// the second innings ends level, short, or is manually ended. Runs after
+// every ball; a no-op once match.result is already set, or before the
+// second innings starts.
 function maybeDeclareResult(match) {
     if (match.result) return;
     const firstKey = match.battingFirst;
@@ -541,7 +552,7 @@ function maybeDeclareResult(match) {
     const oversDone = second.legalBalls >= match.overs * 6;
     const wicketCap = match.isSuperOver ? 2 : (second.wicketLimit || second.batting.length - 1);
     const allOut = second.wickets >= wicketCap;
-    if (!chased && !oversDone && !allOut) return;
+    if (!chased && !oversDone && !allOut && !second.endedEarly) return;
     if (second.totalRuns > first.totalRuns) {
         const wicketsLeft = wicketCap - second.wickets;
         match.result = `${second.name} won by ${wicketsLeft} wicket${wicketsLeft === 1 ? "" : "s"}`;
@@ -611,7 +622,7 @@ async function applyTeamStats(match, team, statsKey) {
                 [`${statsKey}.bowling.runsConceded`]: row.runs || 0,
                 [`${statsKey}.bowling.maidens`]: row.maidens || 0,
                 [`${statsKey}.bowling.hatTricks`]: row.hatTrick ? 1 : 0,
-                [`${statsKey}.bowling.overs`]: Math.ceil((row.balls || 0) / 6),
+                [`${statsKey}.bowling.overs`]: row.overs || 0,
             },
         }, { returnDocument: "after" }).lean();
         if (!updated) throw new Error(`player_not_found:${row.id}`);
@@ -677,7 +688,7 @@ async function reverseTeamStats(match, teamKey) {
             bw.runsConceded = Math.max(bw.runsConceded - (row.runs || 0), 0);
             bw.maidens = Math.max(bw.maidens - (row.maidens || 0), 0);
             bw.hatTricks = Math.max(bw.hatTricks - (row.hatTrick ? 1 : 0), 0);
-            bw.overs = Math.max(bw.overs - Math.ceil((row.balls || 0) / 6), 0);
+            bw.overs = Math.max(bw.overs - (row.overs || 0), 0);
             bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
             bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
             bw.strikeRate = bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0;
@@ -786,6 +797,9 @@ exports.setupInnings = async (req, res) => {
         }
         if (bowlerId) {
             const previousBowlerId = team.currentBowlerId;
+            if (team.overStarted && !team.currentOverBowlerId && previousBowlerId) {
+                team.currentOverBowlerId = previousBowlerId;
+            }
             if (team.overStarted && previousBowlerId && String(previousBowlerId) !== String(bowlerId)) {
                 team.overSplit = true;
                 const previousBowler = playerName(team, previousBowlerId);
@@ -816,6 +830,7 @@ exports.setupInnings = async (req, res) => {
             team.keeperName = kRow ? kRow.name : null;
         }
         match.currentInnings = innings;
+        clearRedoSnapshots(match);
         await match.save();
         res.json({ ok: true, match });
     } catch (err) {
@@ -828,6 +843,7 @@ exports.switchInnings = async (req, res) => {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
         match.currentInnings = match.currentInnings === "team1" ? "team2" : "team1";
+        clearRedoSnapshots(match);
         await match.save();
         res.json({ ok: true, match });
     } catch (err) {
@@ -842,19 +858,81 @@ exports.undoLastBall = async (req, res) => {
         const stack = match.lastBallSnapshots || [];
         if (!stack.length) return res.status(400).json({ error: "nothing_to_undo" });
         const snap = stack.pop();
+        const teamAfterBall = JSON.parse(JSON.stringify(match[snap.innings]));
+        let ballEventIndex = -1;
+        for (let index = (match.ballEvents || []).length - 1; index >= 0; index--) {
+            const event = match.ballEvents[index];
+            if (event.innings === snap.innings && event.payload) {
+                ballEventIndex = index;
+                break;
+            }
+        }
+        const ballEvent = ballEventIndex >= 0 ? match.ballEvents[ballEventIndex] : null;
+        if (!match.redoBallSnapshots) match.redoBallSnapshots = [];
+        match.redoBallSnapshots.push({
+            innings: snap.innings,
+            currentInnings: match.currentInnings,
+            team: teamAfterBall,
+            ballEvent,
+            ballEventIndex,
+        });
+        if (match.redoBallSnapshots.length > 3) match.redoBallSnapshots.shift();
         if (match[snap.innings].statsAggregated) {
             await reverseTeamStats(match, snap.innings);
         }
         match[snap.innings] = snap.team;
-        if (match.ballEvents && match.ballEvents.length) match.ballEvents.pop();
+        if (ballEventIndex >= 0) match.ballEvents.splice(ballEventIndex, 1);
         match.currentInnings = snap.currentInnings;
         match.markModified(snap.innings);
         match.markModified("lastBallSnapshots");
+        match.markModified("redoBallSnapshots");
+        match.markModified("ballEvents");
         await match.save();
-        res.json({ ok: true, match });
+        res.json({ ok: true, match: matchForBallResponse(match) });
     } catch (err) {
         console.log(err);
         res.status(400).json({ error: "undo_failed" });
+    }
+};
+exports.redoLastBall = async (req, res) => {
+    try {
+        const match = await Match.findOne({ _id: req.params.id, status: "live" });
+        if (!match) return res.status(404).json({ error: "match_not_found" });
+        const stack = match.redoBallSnapshots || [];
+        if (!stack.length) return res.status(400).json({ error: "nothing_to_redo" });
+        const snap = stack.pop();
+        const currentTeam = JSON.parse(JSON.stringify(match[snap.innings]));
+        const shouldAggregate = snap.team.statsAggregated && !currentTeam.statsAggregated;
+        if (currentTeam.statsAggregated && !snap.team.statsAggregated) {
+            await reverseTeamStats(match, snap.innings);
+        }
+        if (!match.lastBallSnapshots) match.lastBallSnapshots = [];
+        match.lastBallSnapshots.push({
+            innings: snap.innings,
+            currentInnings: match.currentInnings,
+            team: currentTeam,
+        });
+        if (match.lastBallSnapshots.length > 3) match.lastBallSnapshots.shift();
+        match[snap.innings] = snap.team;
+        if (shouldAggregate) {
+            match[snap.innings].statsAggregated = false;
+            await aggregateTeamStats(match, snap.innings);
+        }
+        if (snap.ballEvent) {
+            const eventIndex = Math.max(0, Math.min(snap.ballEventIndex, (match.ballEvents || []).length));
+            if (!match.ballEvents) match.ballEvents = [];
+            match.ballEvents.splice(eventIndex, 0, snap.ballEvent);
+        }
+        match.currentInnings = snap.currentInnings;
+        match.markModified(snap.innings);
+        match.markModified("lastBallSnapshots");
+        match.markModified("redoBallSnapshots");
+        match.markModified("ballEvents");
+        await match.save();
+        res.json({ ok: true, match: matchForBallResponse(match) });
+    } catch (err) {
+        console.log(err);
+        res.status(400).json({ error: "redo_failed" });
     }
 };
 // Manually closes out the current innings on the current score — used
@@ -868,6 +946,7 @@ exports.endInnings = async (req, res) => {
         const { innings } = req.body;
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
+        clearRedoSnapshots(match);
         team.endedEarly = true;
         autoSwitchInnings(match);
         maybeDeclareResult(match);
@@ -918,6 +997,7 @@ exports.recordBall = async (req, res) => {
         const beforeTeam = JSON.parse(JSON.stringify(team));
         const result = applyBall(match, innings, req.body);
         if (!result.ok) return res.status(400).json({ error: result.error });
+        clearRedoSnapshots(match);
         appendBallEvent(match, innings, req.body, beforeTeam);
 
         if (type !== "retire") {
@@ -991,7 +1071,7 @@ async function aggregateTurfStats(turfId) {
                 a.runsConceded += row.runs;
                 a.maidens += row.maidens || 0;
                 a.hatTricks += row.hatTrick ? 1 : 0;
-                a.oversCounted += Math.ceil((row.balls || 0) / 6);
+                a.oversCounted += row.overs || 0;
             });
         });
     });
@@ -1027,21 +1107,11 @@ async function aggregateTurfStats(turfId) {
         bw.dotBallPercentage = bw.ballsBowled > 0 ? Number(((bw.dots / bw.ballsBowled) * 100).toFixed(2)) : 0;
         await player.save();
     }
-    // Turf MVP: sum this turf's match-level MVP points per player and
-    // crown whoever has the highest combined total (+1 to turfMvpCount).
-    const mvpTotals = new Map();
-    matches.forEach((match) => {
-        computeMVP(match).forEach((p) => {
-            mvpTotals.set(p.id, (mvpTotals.get(p.id) || 0) + p.totalPts);
-        });
-    });
-    let turfMvpId = null;
-    let turfMvpPts = -Infinity;
-    for (const [id, pts] of mvpTotals.entries()) {
-        if (pts > turfMvpPts) { turfMvpPts = pts; turfMvpId = id; }
-    }
-    if (turfMvpId) {
-        await Player.findByIdAndUpdate(turfMvpId, { $inc: { turfMvpCount: 1 } });
+    // Turf MVP: rank combined points only among players who earned at
+    // least one Match MVP in this turf.
+    const turfMvp = computeSessionMVP(matches)[0];
+    if (turfMvp) {
+        await Player.findByIdAndUpdate(turfMvp.id, { $inc: { turfMvpCount: 1 } });
     }
 }
 exports.showTurfSession = async (req, res) => {

@@ -177,6 +177,59 @@
                     return '•';
                 }; %>
                 <% const recordBallClass = (value) => value.toLowerCase().startsWith('wd') ? 'is-wide' : (value.toLowerCase().startsWith('nb') ? 'is-no-ball' : (value.toLowerCase() === 'w' ? 'is-wicket' : '')); %>
+                <% const recordOverFigures = (overEvents) => {
+                    const batters = new Map();
+                    const bowlers = new Map();
+                    const batterRow = (name) => {
+                        if (!name || name === 'Unknown player') return null;
+                        if (!batters.has(name)) batters.set(name, { name, runs: 0, balls: 0 });
+                        return batters.get(name);
+                    };
+                    const bowlerRow = (name) => {
+                        const bowlerName = name || 'Bowler';
+                        if (!bowlers.has(bowlerName)) bowlers.set(bowlerName, { name: bowlerName, runs: 0, wickets: 0 });
+                        return bowlers.get(bowlerName);
+                    };
+                    const runTypes = { dot: 0, one: 1, one_nr: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+                    for (const event of overEvents) {
+                        if (event.delivery === false) continue;
+                        const payload = event.payload || {};
+                        const type = payload.type;
+                        const striker = batterRow(event.striker);
+                        batterRow(event.nonStriker);
+                        const bowler = bowlerRow(event.bowler);
+                        let batterRuns = 0;
+                        let bowlerRuns = 0;
+                        if (Object.prototype.hasOwnProperty.call(runTypes, type)) {
+                            batterRuns = runTypes[type];
+                            bowlerRuns = batterRuns;
+                        } else if (type === 'runs_extra') {
+                            batterRuns = Math.max(0, Number(payload.runs || 0));
+                            bowlerRuns = batterRuns;
+                        } else if (type === 'wide') {
+                            bowlerRuns = 1 + Math.max(0, Number(payload.wideRuns || 0));
+                        } else if (type === 'noball') {
+                            batterRuns = Math.max(0, Number(payload.noballRuns || 0));
+                            bowlerRuns = batterRuns + 1;
+                        } else if (type === 'out' && payload.outType === 'runout') {
+                            batterRuns = Math.max(0, Number(payload.runoutRuns || 0));
+                            bowlerRuns = batterRuns + (payload.isNoBall ? 1 : 0);
+                        } else if (type === 'out' && payload.outType === 'stumping' && payload.isWide) {
+                            bowlerRuns = 1;
+                        }
+                        if (striker) {
+                            striker.runs += batterRuns;
+                            if (type !== 'wide' && !(type === 'out' && payload.outType === 'stumping' && payload.isWide)) {
+                                striker.balls += 1;
+                            }
+                        }
+                        bowler.runs += bowlerRuns;
+                        if (type === 'out' && payload.outType !== 'runout' && payload.outType !== 'obstructing') {
+                            bowler.wickets += 1;
+                        }
+                    }
+                    return { batters: [...batters.values()], bowlers: [...bowlers.values()] };
+                }; %>
                 <% const collapseWideEvents = (events) => {
                     const collapsed = [];
                     for (const event of events) {
@@ -202,7 +255,8 @@
                     return collapsed;
                 }; %>
                 <% for (const inningsKey of [firstInningsKey, secondInningsKey]) { %>
-                    <% const inningsEvents = collapseWideEvents(events.filter((event) => event.innings === inningsKey)); %>
+                    <% const rawInningsEvents = events.filter((event) => event.innings === inningsKey); %>
+                    <% const inningsEvents = collapseWideEvents(rawInningsEvents); %>
                     <section class="records-innings">
                         <h4><%= match[inningsKey].name %> — <%= inningsKey === firstInningsKey ? '1st' : '2nd' %> innings</h4>
                         <% const overs = [...new Set(inningsEvents.map((event) => event.over))]; %>
@@ -210,12 +264,25 @@
                         <% for (const over of overs) { %>
                             <div class="records-over">
                                 <% const overEvents = inningsEvents.filter((item) => item.over === over); %>
+                                <% const overFigures = recordOverFigures(rawInningsEvents.filter((item) => item.over === over)); %>
                                 <div class="records-over-heading">
                                     <strong>Over <%= over %></strong>
                                     <div class="live-over-balls" aria-label="Over ball results">
                                         <% for (const event of overEvents.filter((item) => item.delivery !== false)) { %>
                                             <% const value = recordBallValue(event); %>
                                             <span class="over-ball-chip <%= recordBallClass(value) %>"><%= value %></span>
+                                        <% } %>
+                                    </div>
+                                </div>
+                                <div class="records-over-summary">
+                                    <div class="records-over-batters">
+                                        <% for (const batter of overFigures.batters) { %>
+                                            <span class="records-over-player"><strong><%= batter.name %></strong><span>Runs <%= batter.runs %> · Balls <%= batter.balls %></span></span>
+                                        <% } %>
+                                    </div>
+                                    <div class="records-over-bowlers">
+                                        <% for (const bowler of overFigures.bowlers) { %>
+                                            <span class="records-over-player"><strong><%= bowler.name %></strong><span>Wickets <%= bowler.wickets %> · Runs <%= bowler.runs %></span></span>
                                         <% } %>
                                     </div>
                                 </div>

@@ -13,6 +13,7 @@
         </a>
 
         <% const liveMatch = matches.find(m => m.status === 'live') || null; %>
+        <% const tournamentOvers = tournament.overs || (matches.find(m => m.stage === 'fixture') || {}).overs || 6; %>
         <div class="resume-match-card" style="margin-bottom:16px; position:relative;">
             <div class="resume-match-info">
                 <i class="fa-solid fa-trophy resume-match-icon"></i>
@@ -39,6 +40,10 @@
                             <span>Add Match</span>
                         </button>
                     <% } %>
+                    <button type="button" class="toolbar-btn" id="tournamentSettingsBtn">
+                        <i class="fa-solid fa-gear"></i>
+                        <span>Tournament Settings</span>
+                    </button>
                     <form action="/tcl/session/<%= tournament._id %>/delete" method="POST"
                           onsubmit="return confirm('Delete this tournament? This permanently removes it and every match scheduled inside it. This cannot be undone.');">
                         <button type="submit" class="toolbar-btn toolbar-btn-danger">
@@ -68,6 +73,7 @@
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="sixes">Most Sixes</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="fours">Most Fours</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="wickets">Most Wickets</button>
+            <button type="button" class="scorecard-tab turf-stat-tab" data-stat="runsconceded">Most Runs Conceded</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="catches">Most Catches</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="average">Best Average</button>
             <button type="button" class="scorecard-tab turf-stat-tab" data-stat="strikerate">Best Strike Rate</button>
@@ -128,7 +134,6 @@
                         <% if (isAdmin && m.status === 'live' && !started) { %>
                             <button type="button" class="toolbar-btn tcl-edit-match-btn" style="display:flex;margin:12px auto 0;"
                                     data-match-id="<%= m._id %>"
-                                    data-overs="<%= m.overs %>"
                                     data-batting-first="<%= m.battingFirst %>"
                                     data-team1="<%= m.team1.name %>"
                                     data-team2="<%= m.team2.name %>">
@@ -154,47 +159,29 @@
                 <input type="hidden" name="team1Id" id="team1Id" autocomplete="off" required>
                 <input type="hidden" name="team2Id" id="team2Id" autocomplete="off" required>
 
-                <div class="form-group">
-                    <label>Team 1</label>
-                    <div class="players-grid picker-grid team-select-grid" data-slot="team1">
-                        <% teams.forEach(t => { %>
-                            <div class="player-card picker-player-card" data-team-id="<%= t._id %>">
-                                <div class="player-card-link">
-                                    <div class="player-pic-ring">
-                                        <img src="<%= t.logo %>" alt="<%= t.name %>" class="player-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
-                                    </div>
-                                    <div class="player-info">
-                                        <span class="player-name"><%= t.name %></span>
-                                    </div>
+                <div class="tcl-team-matchup" id="tclTeamMatchup"
+                     data-teams="<%= JSON.stringify(teams.map(t => ({ id: String(t._id), name: t.name, logo: t.logo }))) %>">
+                    <% ['team1', 'team2'].forEach((slot, slotIndex) => { %>
+                        <div class="tcl-team-carousel" data-slot="<%= slot %>">
+                            <button type="button" class="tcl-team-cycle-btn" data-direction="-1"
+                                    aria-label="Previous <%= slot === 'team1' ? 'Team 1' : 'Team 2' %>">
+                                <i class="fa-solid fa-caret-up"></i>
+                            </button>
+                            <div class="tcl-selected-team">
+                                <div class="tcl-selected-team-logo">
+                                    <img alt="" class="tcl-selected-team-image">
                                 </div>
-                                <i class="fa-solid fa-circle-check picker-check-icon"></i>
+                                <span class="tcl-selected-team-name">Choose a team</span>
                             </div>
-                        <% }) %>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>Team 2</label>
-                    <div class="players-grid picker-grid team-select-grid" data-slot="team2">
-                        <% teams.forEach(t => { %>
-                            <div class="player-card picker-player-card" data-team-id="<%= t._id %>">
-                                <div class="player-card-link">
-                                    <div class="player-pic-ring">
-                                        <img src="<%= t.logo %>" alt="<%= t.name %>" class="player-pic" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
-                                    </div>
-                                    <div class="player-info">
-                                        <span class="player-name"><%= t.name %></span>
-                                    </div>
-                                </div>
-                                <i class="fa-solid fa-circle-check picker-check-icon"></i>
-                            </div>
-                        <% }) %>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="overs">Overs</label>
-                    <input type="number" name="overs" id="overs" min="1" autocomplete="off" required>
+                            <button type="button" class="tcl-team-cycle-btn" data-direction="1"
+                                    aria-label="Next <%= slot === 'team1' ? 'Team 1' : 'Team 2' %>">
+                                <i class="fa-solid fa-caret-down"></i>
+                            </button>
+                        </div>
+                        <% if (slotIndex === 0) { %>
+                            <span class="tcl-matchup-vs" aria-hidden="true">VS</span>
+                        <% } %>
+                    <% }) %>
                 </div>
 
                 <div class="form-group">
@@ -223,6 +210,41 @@
     </div>
 
 <% if (isAdmin) { %>
+    <div class="confirm-overlay" id="tournamentSettingsOverlay">
+        <div class="confirm-modal turf-form-modal">
+            <button type="button" class="score-pad-close-btn modal-x-close" id="closeTournamentSettings" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h2 class="add-player-title">Tournament Settings</h2>
+            <form action="/tcl/session/<%= tournament._id %>/settings" method="POST" class="add-player-form">
+                <div class="form-group">
+                    <label for="settingsOvers">Overs per innings</label>
+                    <input type="text" name="overs" id="settingsOvers" inputmode="numeric" pattern="[0-9]+" value="<%= tournamentOvers %>" required>
+                    <small class="form-hint">Changing overs updates matches that have not started. Live or completed matches stay unchanged.</small>
+                </div>
+                <div class="form-group">
+                    <label class="tcl-toggle-row" for="settingsAllowSuperOver">
+                        <span>
+                            <strong>Allow Super Over</strong>
+                            <small class="form-hint">Create a Super Over when a tournament match is tied.</small>
+                        </span>
+                        <span class="tcl-toggle">
+                            <input type="checkbox" name="allowSuperOver" id="settingsAllowSuperOver" <%= tournament.allowSuperOver ? 'checked' : '' %>>
+                            <span class="tcl-toggle-slider"></span>
+                        </span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="toolbar-btn" id="cancelTournamentSettings">Cancel</button>
+                    <button type="submit" class="toolbar-btn toolbar-btn-primary">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Save Settings</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="confirm-overlay" id="editMatchOverlay">
         <div class="confirm-modal turf-form-modal">
             <button type="button" class="score-pad-close-btn modal-x-close" id="closeEditMatch" aria-label="Close">
@@ -230,10 +252,6 @@
             </button>
             <h2 class="add-player-title">Edit Match</h2>
             <form method="POST" id="editMatchForm" class="add-player-form">
-                <div class="form-group">
-                    <label for="editOvers">Overs</label>
-                    <input type="number" name="overs" id="editOvers" min="1" autocomplete="off" required>
-                </div>
                 <div class="form-group">
                     <label>Which team bats first?</label>
                     <div class="toss-choice-group">
@@ -272,35 +290,72 @@
             const overlay = document.getElementById('addMatchOverlay');
             const addBtn = document.getElementById('addMatchBtn');
             if (addBtn) addBtn.addEventListener('click', () => { overlay.style.display = 'flex'; });
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('addMatch') === '1' && addBtn && overlay) {
+                overlay.style.display = 'flex';
+                params.delete('addMatch');
+                const nextQuery = params.toString();
+                window.history.replaceState({}, '', window.location.pathname + (nextQuery ? '?' + nextQuery : '') + window.location.hash);
+            }
             document.querySelectorAll('#cancelAddMatch, #closeAddMatch').forEach((btn) => {
                 btn.addEventListener('click', () => { overlay.style.display = 'none'; });
             });
 
-            const team1Input = document.getElementById('team1Id');
-            const team2Input = document.getElementById('team2Id');
-            const grids = { team1: document.querySelector('.team-select-grid[data-slot="team1"]'), team2: document.querySelector('.team-select-grid[data-slot="team2"]') };
-
-            function syncDisabled() {
-                Object.entries(grids).forEach(([slot, grid]) => {
-                    const otherId = slot === 'team1' ? team2Input.value : team1Input.value;
-                    grid.querySelectorAll('.picker-player-card').forEach((card) => {
-                        card.classList.toggle('picker-disabled', !!otherId && card.dataset.teamId === otherId);
-                    });
+            const settingsOverlay = document.getElementById('tournamentSettingsOverlay');
+            const settingsBtn = document.getElementById('tournamentSettingsBtn');
+            if (settingsOverlay && settingsBtn) {
+                settingsBtn.addEventListener('click', () => { settingsOverlay.style.display = 'flex'; });
+                document.querySelectorAll('#cancelTournamentSettings, #closeTournamentSettings').forEach((btn) => {
+                    btn.addEventListener('click', () => { settingsOverlay.style.display = 'none'; });
                 });
             }
 
-            Object.entries(grids).forEach(([slot, grid]) => {
-                const input = slot === 'team1' ? team1Input : team2Input;
-                grid.addEventListener('click', (e) => {
-                    const card = e.target.closest('.picker-player-card');
-                    if (!card || card.classList.contains('picker-disabled')) return;
-                    grid.querySelectorAll('.picker-player-card').forEach((c) => c.classList.remove('picker-selected'));
-                    card.classList.add('picker-selected');
-                    input.value = card.dataset.teamId;
-                    const nameEl = card.querySelector('.player-name');
-                    const label = document.getElementById(slot === 'team1' ? 'battingFirstTeam1Label' : 'battingFirstTeam2Label');
-                    if (nameEl && label) label.textContent = nameEl.textContent.trim();
-                    syncDisabled();
+            const teamInputs = {
+                team1: document.getElementById('team1Id'),
+                team2: document.getElementById('team2Id')
+            };
+            const matchup = document.getElementById('tclTeamMatchup');
+            const availableTeams = JSON.parse(matchup.dataset.teams);
+            const selectedTeams = { team1: -1, team2: -1 };
+
+            function renderTeam(slot) {
+                const carousel = matchup.querySelector('.tcl-team-carousel[data-slot="' + slot + '"]');
+                const team = availableTeams[selectedTeams[slot]];
+                const image = carousel.querySelector('.tcl-selected-team-image');
+                const name = carousel.querySelector('.tcl-selected-team-name');
+                teamInputs[slot].value = team ? team.id : '';
+                name.textContent = team ? team.name : 'Choose a team';
+                image.src = team ? team.logo : '/images/placeholder-player.svg';
+                image.alt = team ? team.name : '';
+                const battingLabel = document.getElementById(slot === 'team1' ? 'battingFirstTeam1Label' : 'battingFirstTeam2Label');
+                battingLabel.textContent = team ? team.name : (slot === 'team1' ? 'Team 1' : 'Team 2');
+            }
+
+            function changeTeam(slot, direction) {
+                if (availableTeams.length < 2) return;
+                const otherSlot = slot === 'team1' ? 'team2' : 'team1';
+                const otherTeam = availableTeams[selectedTeams[otherSlot]];
+                let nextIndex = selectedTeams[slot];
+                for (let attempt = 0; attempt < availableTeams.length; attempt += 1) {
+                    nextIndex = (nextIndex + direction + availableTeams.length) % availableTeams.length;
+                    if (!otherTeam || availableTeams[nextIndex].id !== otherTeam.id) {
+                        selectedTeams[slot] = nextIndex;
+                        renderTeam(slot);
+                        return;
+                    }
+                }
+            }
+
+            if (availableTeams.length > 0) {
+                selectedTeams.team1 = 0;
+                selectedTeams.team2 = availableTeams.length > 1 ? 1 : 0;
+                renderTeam('team1');
+                renderTeam('team2');
+            }
+            matchup.querySelectorAll('.tcl-team-cycle-btn').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const slot = button.closest('.tcl-team-carousel').dataset.slot;
+                    changeTeam(slot, Number(button.dataset.direction));
                 });
             });
 
@@ -312,7 +367,6 @@
                         e.preventDefault(); // the whole card is a link to the live page
                         e.stopPropagation();
                         editForm.action = '/tcl/session/<%= tournament._id %>/match/' + btn.dataset.matchId + '/edit';
-                        document.getElementById('editOvers').value = btn.dataset.overs;
                         document.getElementById('editBatTeam1Label').textContent = btn.dataset.team1;
                         document.getElementById('editBatTeam2Label').textContent = btn.dataset.team2;
                         editForm.querySelector('input[name="battingFirst"][value="' + btn.dataset.battingFirst + '"]').checked = true;
@@ -325,7 +379,7 @@
             }
 
             document.querySelector('#addMatchOverlay form').addEventListener('submit', (e) => {
-                if (!team1Input.value || !team2Input.value) {
+                if (!teamInputs.team1.value || !teamInputs.team2.value || teamInputs.team1.value === teamInputs.team2.value) {
                     e.preventDefault();
                     alert('Please select both teams.');
                 }
