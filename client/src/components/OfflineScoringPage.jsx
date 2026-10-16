@@ -4,21 +4,13 @@ import {
   getAppSetting,
   getDownloadedMatch,
   getDownloadedMatches,
-  getOfflineCatalog,
   getPendingScoreActions,
   markScoreActionsSynced,
-  saveOfflineCatalog,
-  saveOfflineMatchCreation,
   saveDownloadedMatch,
   saveOfflineAction,
   setAppSetting,
   undoLastOfflineAction,
 } from "../offline/offlineDatabase";
-import {
-  createOfflineMatchId,
-  createOfflineTclMatch,
-  createTurfMatch,
-} from "../offline/offlineMatchFactory";
 
 const API_ROOT_KEY = "api_root";
 const TOKEN_KEY = "admin_token";
@@ -60,8 +52,6 @@ export default function OfflineScoringPage() {
   const [password, setPassword] = useState("");
   const [liveMatches, setLiveMatches] = useState([]);
   const [downloadedMatches, setDownloadedMatches] = useState([]);
-  const [offlineCatalog, setOfflineCatalog] = useState(null);
-  const [newMatchKind, setNewMatchKind] = useState("turf");
   const [match, setMatch] = useState(null);
   const [online, setOnline] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -76,40 +66,16 @@ export default function OfflineScoringPage() {
     setDownloadedMatches(await getDownloadedMatches());
   }, []);
 
-  const downloadOfflineCatalog = async () => {
-    setWorking(true);
-    setError("");
-    setNotice("");
-    try {
-      const catalog = await fetchApi(apiRoot, token, "/api/mobile/catalog");
-      await saveOfflineCatalog(catalog);
-      setOfflineCatalog(catalog);
-      await refreshDownloaded();
-      setNotice("Players, teams, Turf sessions, TCL tournaments, and match records are saved on this device.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setWorking(false);
-    }
-  };
-
   const fetchApi = useCallback(async (root, accessToken, path, options = {}) => {
-    let response;
-    try {
-      response = await fetch(`${root}${path}`, {
-        ...options,
-        headers: {
-          Accept: "application/json",
-          ...(options.body ? { "Content-Type": "application/json" } : {}),
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          ...options.headers,
-        },
-      });
-      setOnline(true);
-    } catch (err) {
-      setOnline(false);
-      throw err;
-    }
+    const response = await fetch(`${root}${path}`, {
+      ...options,
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...options.headers,
+      },
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
     return data;
@@ -117,13 +83,12 @@ export default function OfflineScoringPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([getAppSetting(API_ROOT_KEY), getAppSetting(TOKEN_KEY), getDownloadedMatches(), getOfflineCatalog(), Network.getStatus()])
-      .then(([savedRoot, savedToken, savedMatches, savedCatalog, status]) => {
+    Promise.all([getAppSetting(API_ROOT_KEY), getAppSetting(TOKEN_KEY), getDownloadedMatches(), Network.getStatus()])
+      .then(([savedRoot, savedToken, savedMatches, status]) => {
         if (!active) return;
         setApiRoot(savedRoot);
         setToken(savedToken);
         setDownloadedMatches(savedMatches);
-        setOfflineCatalog(savedCatalog);
         setOnline(status.connected);
       })
       .catch((err) => {
@@ -204,64 +169,6 @@ export default function OfflineScoringPage() {
       setError(err.message);
     } finally {
       setWorking(false);
-    }
-  };
-
-  const createOfflineMatch = async (event) => {
-    event.preventDefault();
-    if (!offlineCatalog) {
-      setError("Download all app data while connected before creating a match offline.");
-      return;
-    }
-    const form = new FormData(event.currentTarget);
-    const actionId = globalThis.crypto?.randomUUID?.();
-    if (!actionId) {
-      setError("This device cannot create a safe offline action ID.");
-      return;
-    }
-    try {
-      const matchId = createOfflineMatchId();
-      const allKnownMatches = [
-        ...offlineCatalog.matches,
-        ...downloadedMatches.map((entry) => entry.match),
-      ];
-      const knownMatches = [...new Map(allKnownMatches.map((known) => [String(known._id), known])).values()];
-      let createdMatch;
-      let payload;
-      if (newMatchKind === "turf") {
-        const turfId = String(form.get("turfId") || "");
-        const turf = offlineCatalog.turfs.find((entry) => String(entry._id) === turfId);
-        createdMatch = createTurfMatch(turf, offlineCatalog.players, knownMatches, matchId);
-        payload = { type: "create_turf_match", clientMatchId: matchId, turfId };
-      } else {
-        const tournamentId = String(form.get("tournamentId") || "");
-        const tournament = offlineCatalog.tournaments.find((entry) => String(entry._id) === tournamentId);
-        const team1Id = String(form.get("team1Id") || "");
-        const team2Id = String(form.get("team2Id") || "");
-        const team1 = offlineCatalog.teams.find((entry) => String(entry._id) === team1Id);
-        const team2 = offlineCatalog.teams.find((entry) => String(entry._id) === team2Id);
-        const fixtureCount = knownMatches.filter((entry) =>
-          String(entry.tournamentId || "") === tournamentId && (entry.stage || "fixture") === "fixture"
-        ).length;
-        if (tournament?.totalFixtures && fixtureCount >= tournament.totalFixtures) {
-          throw new Error("This TCL tournament has reached its fixture limit.");
-        }
-        createdMatch = createOfflineTclMatch(
-          tournament,
-          team1,
-          team2,
-          String(form.get("battingFirst") || "team1"),
-          matchId
-        );
-        payload = { type: "create_tcl_match", clientMatchId: matchId, tournamentId, team1Id, team2Id, battingFirst: createdMatch.battingFirst };
-      }
-      await saveOfflineMatchCreation(createdMatch, actionId, payload);
-      setMatch(createdMatch);
-      setError("");
-      setNotice("Match created on this device. Score offline, then tap Sync to upload it.");
-      await refreshDownloaded();
-    } catch (err) {
-      setError(`Could not create the match offline: ${err.message}`);
     }
   };
 
@@ -403,35 +310,13 @@ export default function OfflineScoringPage() {
     }
   };
 
-  const endMatchOffline = async () => {
-    if (!match || match.status !== "live") return;
-    const actionId = globalThis.crypto?.randomUUID?.();
-    if (!actionId) {
-      setError("This device cannot create a safe offline action ID.");
-      return;
-    }
-    const updated = cloneMatch(match);
-    updated.status = "completed";
-    updated.result = updated.result || "No Result";
-    updated.updatedAt = new Date().toISOString();
-    const payload = {
-      type: "end_match",
-      clientExpectedState: expectedMatchState(match, match.currentInnings),
-    };
-    try {
-      await saveOfflineAction(match._id, actionId, payload, updated, match);
-      setMatch(updated);
-      setError("");
-      setNotice("Match ending saved on this device. Sync to publish it.");
-      await refreshDownloaded();
-    } catch (err) {
-      setError(`Match ending was not saved locally: ${err.message}`);
-    }
-  };
-
   const syncMatch = async () => {
     if (!match || !apiRoot || !token) {
       setError("Sign in to the server before syncing this match.");
+      return;
+    }
+    if (!online) {
+      setError("This device is offline. Reconnect, then tap Sync.");
       return;
     }
     setWorking(true);
@@ -439,35 +324,24 @@ export default function OfflineScoringPage() {
     setNotice("");
     let syncedCount = 0;
     try {
-      const pending = await getPendingScoreActions();
-      let currentMatchFromServer = null;
+      const pending = await getPendingScoreActions(match._id);
+      let authoritativeMatch = null;
       for (const action of pending) {
-        const actionType = action.payload.type;
+        const isSetup = action.payload.type === "setup";
         const body = { ...action.payload, clientActionId: action.actionId };
-        const actionMatchId = action.matchId;
-        const isCreateTurfMatch = actionType === "create_turf_match";
-        const isCreateTclMatch = actionType === "create_tcl_match";
-        const url = isCreateTurfMatch
-          ? "/api/mobile/matches/turf"
-          : isCreateTclMatch
-            ? `/api/mobile/tournaments/${encodeURIComponent(action.payload.tournamentId)}/matches`
-            : actionType === "end_match"
-              ? `/api/mobile/matches/${encodeURIComponent(actionMatchId)}/end`
-            : actionType === "setup"
-              ? `/api/mobile/matches/${encodeURIComponent(actionMatchId)}/setup`
-              : `/api/mobile/matches/${encodeURIComponent(actionMatchId)}/ball`;
+        delete body.type;
+        const url = isSetup
+          ? `/api/mobile/matches/${encodeURIComponent(match._id)}/setup`
+          : `/api/mobile/matches/${encodeURIComponent(match._id)}/ball`;
         const response = await fetchApi(apiRoot, token, url, {
           method: "POST",
           body: JSON.stringify(body),
         });
-        const authoritativeMatch = response.match || null;
-        if (String(authoritativeMatch?._id || "") === String(match._id)) {
-          currentMatchFromServer = authoritativeMatch;
-        }
+        authoritativeMatch = response.match || authoritativeMatch;
         await markScoreActionsSynced([action.actionId], authoritativeMatch);
         syncedCount += 1;
       }
-      const latest = currentMatchFromServer || await getDownloadedMatch(match._id);
+      const latest = authoritativeMatch || await getDownloadedMatch(match._id);
       if (latest) setMatch(latest);
       await refreshDownloaded();
       setNotice(syncedCount ? `Synced ${syncedCount} scoring action${syncedCount === 1 ? "" : "s"}.` : "Everything is already synced.");
@@ -503,7 +377,6 @@ export default function OfflineScoringPage() {
     const team = match[match.currentInnings];
     const opponent = match[match.currentInnings === "team1" ? "team2" : "team1"];
     const pending = downloadedMatches.find((entry) => String(entry.match._id) === String(match._id))?.pendingCount || 0;
-    const totalPending = downloadedMatches.reduce((sum, entry) => sum + entry.pendingCount, 0);
     const striker = team?.batting?.find((player) => String(player.id) === String(team.strikerId));
     const nonStriker = team?.batting?.find((player) => String(player.id) === String(team.nonStrikerId));
     const bowler = team?.bowling?.find((player) => String(player.id) === String(team.currentBowlerId));
@@ -539,7 +412,7 @@ export default function OfflineScoringPage() {
             <form className="offline-setup-form" onSubmit={setupCurrentInnings}>
               <label>Striker<select name="strikerId" required defaultValue=""><option value="" disabled>Select batter</option>{availableBatters.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
               <label>Non-striker<select name="nonStrikerId" required defaultValue=""><option value="" disabled>Select batter</option>{availableBatters.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
-              <label>Bowler<select name="bowlerId" required defaultValue={team.currentBowlerId || ""}><option value="" disabled>Select bowler</option>{(team.bowling || []).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
+              <label>Bowler<select name="bowlerId" required defaultValue={team.currentBowlerId || ""}><option value="" disabled>Select bowler</option>{(opponent?.bowling || []).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></label>
               <button className="offline-primary" type="submit">Save innings setup</button>
             </form>
           </section>
@@ -555,7 +428,7 @@ export default function OfflineScoringPage() {
               <form className="offline-setup-form offline-bowler-form" onSubmit={changeBowler}>
                 <label>Next over bowler<select name="bowlerId" required defaultValue="">
                   <option value="" disabled>Select bowler</option>
-                  {(team.bowling || []).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                  {(opponent?.bowling || []).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
                 </select></label>
                 <div className="offline-dialog-actions">
                   <button type="button" onClick={() => setShowBowlerPicker(false)}>Cancel</button>
@@ -577,9 +450,6 @@ export default function OfflineScoringPage() {
               <button type="button" onClick={() => recordAction({ type: "noball", noballRuns: 6, noballBoundary: "six" })} disabled={working || bowlerDue}>No ball + 6</button>
               <button type="button" onClick={() => setDismissalOpen(true)} disabled={working || bowlerDue}>Wicket</button>
             </div>
-            <button className="offline-end-match" type="button" onClick={endMatchOffline} disabled={working}>
-              End match
-            </button>
           </section>
         )}
 
@@ -679,10 +549,10 @@ export default function OfflineScoringPage() {
         )}
 
         <section className="offline-sync-panel">
-          <div><strong>{totalPending} pending</strong><small> {totalPending ? "action(s) saved on this device" : "actions to sync"}</small></div>
+          <div><strong>{pending} pending</strong><small> {pending ? "action(s) saved on this device" : "actions to sync"}</small></div>
           <div className="offline-sync-actions">
             {!!pending && <button type="button" onClick={undoLastAction} disabled={working}>Undo</button>}
-            <button className="offline-primary" type="button" onClick={syncMatch} disabled={working || !totalPending}>
+            <button className="offline-primary" type="button" onClick={syncMatch} disabled={working || !pending}>
               {working ? "Working…" : "Sync"}
             </button>
           </div>
@@ -707,81 +577,16 @@ export default function OfflineScoringPage() {
       ) : (
         <>
           <section className="offline-panel">
-            <div className="offline-section-header"><h2>Live matches</h2><button type="button" onClick={() => refreshLiveMatches()} disabled={working}>Refresh</button></div>
+            <div className="offline-section-header"><h2>Live matches</h2><button type="button" onClick={() => refreshLiveMatches()} disabled={working || !online}>Refresh</button></div>
             <button type="button" className="offline-link-button" onClick={signInAgain}>Sign in again / change server</button>
-            {!online && <p className="offline-muted">The app reports no connection. Try Refresh or Download if your internet is working.</p>}
-            <button className="offline-primary offline-full-button" type="button" onClick={downloadOfflineCatalog} disabled={working}>
-              {working ? "Downloading…" : "Download all app data"}
-            </button>
-            {offlineCatalog && (
-              <p className="offline-muted">
-                Saved locally: {offlineCatalog.players.length} players, {offlineCatalog.teams.length} teams, {offlineCatalog.turfs.length} Turf sessions, {offlineCatalog.tournaments.length} TCL tournaments, {offlineCatalog.matches.length} matches.
-              </p>
-            )}
+            {!online && <p className="offline-muted">Reconnect to load or download matches.</p>}
             {online && !liveMatches.length && <p className="offline-muted">No live matches found.</p>}
             {liveMatches.map((live) => (
               <div className="offline-match-row" key={live._id}>
                 <span><strong>{live.team1?.name}</strong> vs <strong>{live.team2?.name}</strong></span>
-                <button type="button" onClick={() => downloadMatch(live._id)} disabled={working}>Download</button>
+                <button type="button" onClick={() => downloadMatch(live._id)} disabled={working || !online}>Download</button>
               </div>
             ))}
-          </section>
-          <section className="offline-panel">
-            <h2>Create a match offline</h2>
-            {!offlineCatalog ? (
-              <p className="offline-muted">Download all app data while connected before creating a match offline.</p>
-            ) : (
-              <form className="offline-setup-form" onSubmit={createOfflineMatch}>
-                <label>Match type
-                  <select value={newMatchKind} onChange={(event) => setNewMatchKind(event.target.value)}>
-                    <option value="turf">Turf session match</option>
-                    <option value="tcl">TCL tournament fixture</option>
-                  </select>
-                </label>
-                {newMatchKind === "turf" ? (
-                  <label>Turf session
-                    <select name="turfId" required defaultValue="">
-                      <option value="" disabled>Select Turf session</option>
-                      {offlineCatalog.turfs.filter((turf) => turf.status === "active").map((turf) => (
-                        <option key={turf._id} value={turf._id}>{turf.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <>
-                    <label>TCL tournament
-                      <select name="tournamentId" required defaultValue="">
-                        <option value="" disabled>Select tournament</option>
-                        {offlineCatalog.tournaments.filter((tournament) => tournament.status === "active").map((tournament) => (
-                          <option key={tournament._id} value={tournament._id}>{tournament.name}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>Team 1
-                      <select name="team1Id" required defaultValue="">
-                        <option value="" disabled>Select team</option>
-                        {offlineCatalog.teams.map((team) => <option key={team._id} value={team._id}>{team.name}</option>)}
-                      </select>
-                    </label>
-                    <label>Team 2
-                      <select name="team2Id" required defaultValue="">
-                        <option value="" disabled>Select team</option>
-                        {offlineCatalog.teams.map((team) => <option key={team._id} value={team._id}>{team.name}</option>)}
-                      </select>
-                    </label>
-                    <label>Batting first
-                      <select name="battingFirst" defaultValue="team1">
-                        <option value="team1">Team 1</option>
-                        <option value="team2">Team 2</option>
-                      </select>
-                    </label>
-                  </>
-                )}
-                <button className="offline-primary" type="submit" disabled={working}>
-                  Create and score offline
-                </button>
-              </form>
-            )}
           </section>
           <section className="offline-panel">
             <h2>On this device</h2>

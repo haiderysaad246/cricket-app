@@ -208,7 +208,7 @@ Vite runs on port `5173` and proxies configured API, authentication, and static 
 
 ### Android offline scorer
 
-The Capacitor Android app can download app data (players, teams, Turf sessions, TCL tournaments, and match records) while online. It stores that catalog and match state in SQLite, can create a Turf match for a configured session or a TCL fixture offline, and queues match setup and scoring actions until an administrator taps **Sync**. The existing Render/Express/MongoDB website remains the server of record. Only one device should create or score matches in the same session/tournament while offline. Offline editing of player/team/session/tournament administration is not yet supported.
+The Capacitor Android app can download a live match while online, store ball-by-ball scoring and innings setup locally in SQLite, then upload queued actions only when an administrator taps **Sync**. The existing Render/Express/MongoDB website remains the server of record. Only one device should score a match while offline.
 
 To build a debug APK on a machine with Android Studio, the Android SDK, and Java installed:
 
@@ -218,7 +218,7 @@ npm install
 npm run android:debug
 ```
 
-The APK is written to `client/android/app/build/outputs/apk/debug/app-debug.apk`. Install it on an Android device, sign in using the HTTPS URL of the deployed website and the admin password, then tap **Download all app data** before going offline. Existing live matches can also be downloaded individually. The APK must be rebuilt and installed after client changes; deploy the backend changes before using the new catalog and offline match-creation APIs. iOS is not included.
+The APK is written to `client/android/app/build/outputs/apk/debug/app-debug.apk`. Install it on an Android device, sign in using the HTTPS URL of the deployed website and the admin password, then download the live match before going offline. iOS and offline management of players, teams, and tournaments are not included.
 
 ### 5. 🧪 Try It
 

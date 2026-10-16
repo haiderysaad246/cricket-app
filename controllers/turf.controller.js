@@ -209,24 +209,8 @@ exports.createTurf = async (req, res) => {
 exports.startLive = async (req, res) => {
     try {
         const turfId = req.body.turfId;
-        const clientMatchId = req.body.clientMatchId;
         if (!turfId) {
             return respond(req, res, { json: { error: "turf_required" }, redirect: "/turfs?error=turf_required" });
-        }
-        if (clientMatchId && !/^[a-f\d]{24}$/i.test(clientMatchId)) {
-            return respond(req, res, { json: { error: "invalid_match_id" }, redirect: "/turfs?error=invalid_match_id" });
-        }
-        if (clientMatchId) {
-            const existingMatch = await Match.findById(clientMatchId);
-            if (existingMatch) {
-                if (String(existingMatch.turfId) !== String(turfId)) {
-                    return respond(req, res, { json: { error: "match_id_conflict" }, redirect: "/turfs?error=match_id_conflict" });
-                }
-                return respond(req, res, {
-                    json: { ok: true, duplicate: true, matchId: existingMatch._id, match: matchForBallResponse(existingMatch) },
-                    redirect: "/turfs/live/" + existingMatch._id,
-                });
-            }
         }
         const turf = await Turf.findOne({ _id: turfId, status: "active" })
             .select("_id overs battingFirst team1Name team2Name team1PlayerIds team2PlayerIds team1CaptainId team2CaptainId");
@@ -241,14 +225,7 @@ exports.startLive = async (req, res) => {
                 .select("winnerKey"),
         ]);
         if (existingLive) {
-            if (clientMatchId) {
-                return respond(req, res, { json: { error: "turf_match_already_live" }, redirect: "/turfs/live/" + existingLive._id, status: 409 });
-            }
-            const liveMatch = await Match.findById(existingLive._id);
-            return respond(req, res, {
-                json: { ok: true, matchId: existingLive._id, match: matchForBallResponse(liveMatch) },
-                redirect: "/turfs/live/" + existingLive._id,
-            });
+            return respond(req, res, { json: { ok: true, matchId: existingLive._id }, redirect: "/turfs/live/" + existingLive._id });
         }
         // First match ever played in this turf: overs/team names/toss/roster
         // all come from the form and get locked onto the turf. Every match
@@ -325,7 +302,6 @@ exports.startLive = async (req, res) => {
         const team1CaptainDoc = findCaptainDoc(team1PlayerDocs, team1Captain);
         const team2CaptainDoc = findCaptainDoc(team2PlayerDocs, team2Captain);
         const match = {
-            ...(clientMatchId ? { _id: clientMatchId } : {}),
             overs: turf.overs,
             turfId: turf._id,
             battingFirst,
@@ -348,10 +324,7 @@ exports.startLive = async (req, res) => {
             },
         };
         const savedMatch = await Match.create(match);
-        respond(req, res, {
-            json: { ok: true, matchId: savedMatch._id, match: matchForBallResponse(savedMatch) },
-            redirect: "/turfs/live/" + savedMatch._id,
-        });
+        respond(req, res, { json: { ok: true, matchId: savedMatch._id }, redirect: "/turfs/live/" + savedMatch._id });
     } catch (err) {
         console.log(err);
         respond(req, res, { json: { error: "create_failed" }, redirect: "/turfs?error=create_failed" });
@@ -458,9 +431,6 @@ exports.endMatch = async (req, res) => {
         // The status === "live" guard below keeps stats from being
         // double-counted if the match already completed.
         const match = await Match.findById(req.params.id);
-        if (match?.status === "live" && clientStateMismatch(match, req.body.clientExpectedState)) {
-            return res.status(409).json({ error: "The server match changed since this device downloaded it. Local scores are still saved and need review before syncing." });
-        }
         if (match && match.status === "live") {
             // Fold any innings that finished but hasn't been aggregated yet,
             // then save whatever stats exist for the current (in-progress)
@@ -483,7 +453,7 @@ exports.endMatch = async (req, res) => {
             ? "/tcl/session/" + match.tournamentId + "?addMatch=1"
             : (match && match.turfId ? "/turfs/session/" + match.turfId : "/turfs");
         await tryCreatePlayoffs(match);
-        respond(req, res, { json: { ok: true, match: match ? matchForBallResponse(match) : null }, redirect: redirectUrl });
+        respond(req, res, { json: { ok: true }, redirect: redirectUrl });
     } catch (err) {
         console.log(err);
         respond(req, res, { json: { error: "end_match_failed" }, redirect: "/turfs" });

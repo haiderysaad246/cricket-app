@@ -372,28 +372,9 @@ exports.showSession = async (req, res) => {
 // admin opens it and hits Start (see /turfs/live/:id).
 exports.createMatch = async (req, res) => {
     const tournamentId = req.params.id;
-    const wantsJson = req.headers.accept?.includes("application/json");
-    const errorResponse = (key, status = 400) => wantsJson
-        ? res.status(status).json({ error: key })
-        : res.redirect(`/tcl/session/${tournamentId}?error=${key}`);
     try {
-        const clientMatchId = req.body.clientMatchId;
-        if (clientMatchId && !/^[a-f\d]{24}$/i.test(clientMatchId)) {
-            return errorResponse("invalid_match_id");
-        }
-        if (clientMatchId) {
-            const existingMatch = await Match.findById(clientMatchId);
-            if (existingMatch) {
-                if (String(existingMatch.tournamentId) !== String(tournamentId)) {
-                    return errorResponse("match_id_conflict", 409);
-                }
-                return wantsJson
-                    ? res.json({ ok: true, duplicate: true, match: existingMatch })
-                    : res.redirect("/turfs/live/" + existingMatch._id);
-            }
-        }
         const tournament = await Tournament.findOne({ _id: tournamentId, status: "active" });
-        if (!tournament) return errorResponse("not_found", 404);
+        if (!tournament) return res.redirect("/tcl?error=not_found");
 
         // Enforce fixed number of fixtures when `totalFixtures` is set.
         // Only counts fixture-stage matches — auto-created semifinal/final
@@ -401,13 +382,13 @@ exports.createMatch = async (req, res) => {
         if (Number.isFinite(tournament.totalFixtures) && tournament.totalFixtures !== null) {
             const existingCount = await Match.countDocuments({ tournamentId: tournament._id, stage: "fixture" });
             if (existingCount >= tournament.totalFixtures) {
-                return errorResponse("fixtures_full");
+                return res.redirect("/tcl/session/" + tournamentId + "?error=fixtures_full");
             }
         }
 
         const { team1Id, team2Id, battingFirst } = req.body;
         if (!team1Id || !team2Id || team1Id === team2Id) {
-            return errorResponse("teams_required");
+            return res.redirect("/tcl/session/" + tournamentId + "?error=teams_required");
         }
 
         const [team1, team2] = await Promise.all([
@@ -415,7 +396,7 @@ exports.createMatch = async (req, res) => {
             Team.findById(team2Id).populate("players").populate("captain"),
         ]);
         if (!team1 || !team2) {
-            return errorResponse("teams_required");
+            return res.redirect("/tcl/session/" + tournamentId + "?error=teams_required");
         }
 
         const existingFixture = tournament.overs ? null : await Match.findOne({
@@ -425,7 +406,6 @@ exports.createMatch = async (req, res) => {
         const overs = tournament.overs || existingFixture?.overs || 6;
         const battingFirstKey = battingFirst === "team2" ? "team2" : "team1";
         const match = await Match.create({
-            ...(clientMatchId ? { _id: clientMatchId } : {}),
             overs,
             battingFirst: battingFirstKey,
             currentInnings: battingFirstKey,
@@ -449,11 +429,9 @@ exports.createMatch = async (req, res) => {
                 bowling: team1.players.map((p) => toBowlingRow(p, team1.captain?._id)),
             },
         });
-        if (wantsJson) return res.status(201).json({ ok: true, match });
         res.redirect("/turfs/live/" + match._id);
     } catch (err) {
         console.log(err);
-        if (wantsJson) return res.status(400).json({ error: "create_match_failed" });
         res.redirect("/tcl/session/" + tournamentId + "?error=create_match_failed");
     }
 };
