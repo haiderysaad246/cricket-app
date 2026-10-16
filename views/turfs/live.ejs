@@ -255,7 +255,7 @@
                     return collapsed;
                 }; %>
                 <% for (const inningsKey of [firstInningsKey, secondInningsKey]) { %>
-                    <% const rawInningsEvents = events.filter((event) => event.innings === inningsKey && event.kind !== 'mobile_action'); %>
+                    <% const rawInningsEvents = events.filter((event) => event.innings === inningsKey); %>
                     <% const inningsEvents = collapseWideEvents(rawInningsEvents); %>
                     <section class="records-innings">
                         <h4><%= match[inningsKey].name %> — <%= inningsKey === firstInningsKey ? '1st' : '2nd' %> innings</h4>

@@ -4,9 +4,7 @@ const { verify, parseCookies, COOKIE_NAME, getActiveSession, touchSession } = re
 async function attachRole(req, res, next) {
     try {
         const cookies = parseCookies(req);
-        const authorization = req.headers.authorization || "";
-        const bearer = authorization.match(/^Bearer\s+(.+)$/i);
-        const sessionId = verify(bearer ? bearer[1] : cookies[COOKIE_NAME]);
+        const sessionId = verify(cookies[COOKIE_NAME]);
         if (!sessionId) {
             req.isAdmin = false;
             res.locals.isAdmin = false;

@@ -59,20 +59,6 @@ function matchForBallResponse(match) {
     delete json.redoBallSnapshots;
     return json;
 }
-function clientStateMismatch(match, expected) {
-    if (!expected) return false;
-    if (!["team1", "team2"].includes(expected.innings)) return true;
-    const team = match[expected.innings];
-    if (!team || match.currentInnings !== expected.innings) return true;
-    const sameId = (left, right) => String(left || "") === String(right || "");
-    return Number(team.legalBalls || 0) !== Number(expected.legalBalls || 0)
-        || Number(team.totalRuns || 0) !== Number(expected.totalRuns || 0)
-        || Number(team.wickets || 0) !== Number(expected.wickets || 0)
-        || Number(team.wicketLimit || 0) !== Number(expected.wicketLimit || 0)
-        || !sameId(team.strikerId, expected.strikerId)
-        || !sameId(team.nonStrikerId, expected.nonStrikerId)
-        || !sameId(team.currentBowlerId, expected.currentBowlerId);
-}
 function clearRedoSnapshots(match) {
     match.redoBallSnapshots = [];
     match.markModified("redoBallSnapshots");
@@ -155,7 +141,6 @@ function appendBallEvent(match, innings, body, beforeTeam) {
     if (!match.ballEvents) match.ballEvents = [];
     const legalBalls = beforeTeam.legalBalls || 0;
     match.ballEvents.push({
-        actionId: body.clientActionId || null,
         innings,
         over: Math.floor(legalBalls / 6) + 1,
         ball: legalBalls % 6 + 1,
@@ -730,16 +715,6 @@ exports.setupInnings = async (req, res) => {
     try {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
-        const clientActionId = req.body.clientActionId;
-        if (clientActionId && !/^[\w-]{8,100}$/.test(clientActionId)) {
-            return res.status(400).json({ error: "invalid_action_id" });
-        }
-        if (clientActionId && (match.ballEvents || []).some((event) => event.actionId === clientActionId)) {
-            return res.json({ ok: true, duplicate: true, match: matchForBallResponse(match) });
-        }
-        if (clientStateMismatch(match, req.body.clientExpectedState)) {
-            return res.status(409).json({ error: "The server match changed since this device downloaded it. Local scores are still saved and need review before syncing." });
-        }
         const { innings, strikerId, nonStrikerId, bowlerId, keeperId } = req.body;
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
@@ -786,7 +761,6 @@ exports.setupInnings = async (req, res) => {
             if (!match.ballEvents) match.ballEvents = [];
             for (const change of batterChanges) {
                 match.ballEvents.push({
-                    actionId: clientActionId || null,
                     kind: "batter_change",
                     innings,
                     over: Math.floor((team.legalBalls || 0) / 6) + 1,
@@ -832,7 +806,6 @@ exports.setupInnings = async (req, res) => {
                 const nextBowler = playerName(team, bowlerId);
                 if (!match.ballEvents) match.ballEvents = [];
                 match.ballEvents.push({
-                    actionId: clientActionId || null,
                     kind: "bowler_change",
                     innings,
                     over: Math.floor((team.legalBalls || 0) / 6) + 1,
@@ -857,20 +830,6 @@ exports.setupInnings = async (req, res) => {
             team.keeperName = kRow ? kRow.name : null;
         }
         match.currentInnings = innings;
-        if (clientActionId) {
-            if (!match.ballEvents) match.ballEvents = [];
-            match.ballEvents.push({
-                actionId: clientActionId,
-                kind: "mobile_action",
-                innings,
-                over: Math.floor((team.legalBalls || 0) / 6) + 1,
-                ball: null,
-                legal: false,
-                delivery: false,
-                createdAt: new Date(),
-            });
-            match.markModified("ballEvents");
-        }
         clearRedoSnapshots(match);
         await match.save();
         res.json({ ok: true, match });
@@ -1004,19 +963,8 @@ exports.endInnings = async (req, res) => {
 };
 exports.recordBall = async (req, res) => {
     try {
-        const match = await Match.findById(req.params.id);
+        const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
-        const clientActionId = req.body.clientActionId;
-        if (clientActionId && !/^[\w-]{8,100}$/.test(clientActionId)) {
-            return res.status(400).json({ error: "invalid_action_id" });
-        }
-        if (clientActionId && (match.ballEvents || []).some((event) => event.actionId === clientActionId)) {
-            return res.json({ ok: true, duplicate: true, match: matchForBallResponse(match) });
-        }
-        if (match.status !== "live") return res.status(404).json({ error: "match_not_found" });
-        if (clientStateMismatch(match, req.body.clientExpectedState)) {
-            return res.status(409).json({ error: "The server match changed since this device downloaded it. Local scores are still saved and need review before syncing." });
-        }
         const { innings, type } = req.body;
         if (!["team1", "team2"].includes(innings)) {
             return res.status(400).json({ error: "invalid_innings" });

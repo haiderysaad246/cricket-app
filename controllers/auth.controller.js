@@ -60,3 +60,4 @@ exports.logout = async (req, res) => {
     res.clearCookie(COOKIE_NAME);
     res.json({ ok: true });
 };
+

@@ -1,5 +1,4 @@
 import { Routes, Route } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 import { AuthProvider } from "./AuthContext";
 import Navbar from "./components/Navbar";
 import PlayersPage from "./components/PlayersPage";
@@ -9,11 +8,8 @@ import TurfsPage from "./components/TurfsPage";
 import TeamsPage from "./components/TeamsPage";
 import TeamFormPage from "./components/TeamFormPage";
 import TeamPlayersPage from "./components/TeamPlayersPage";
-import OfflineScoringPage from "./components/OfflineScoringPage";
 
 export default function App() {
-  if (Capacitor.isNativePlatform()) return <OfflineScoringPage />;
-
   return (
     <AuthProvider>
       <Navbar />
