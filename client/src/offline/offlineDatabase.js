@@ -138,6 +138,28 @@ export async function saveOfflineAction(matchId, actionId, payload, match, previ
   });
 }
 
+export async function saveOfflineMatchCreation(match, actionId, payload) {
+  if (!match?._id) throw new Error("A match ID is required to save an offline match.");
+  const database = await openDatabase();
+  const id = String(match._id);
+  const timestamp = new Date().toISOString();
+  await database.executeSet({
+    set: [
+      {
+        statement: `INSERT INTO downloaded_matches (match_id, match_json, downloaded_at, server_updated_at)
+          VALUES (?, ?, ?, NULL)`,
+        values: [id, JSON.stringify(match), timestamp],
+      },
+      {
+        statement: `INSERT INTO score_outbox (action_id, match_id, sequence, payload_json, previous_match_json, created_at)
+          VALUES (?, ?, 1, ?, NULL, ?)`,
+        values: [actionId, id, JSON.stringify(payload), timestamp],
+      },
+    ],
+    transaction: true,
+  });
+}
+
 export async function undoLastOfflineAction(matchId) {
   const database = await openDatabase();
   const id = String(matchId);
@@ -150,7 +172,28 @@ export async function undoLastOfflineAction(matchId) {
   const action = result.values?.[0];
   if (!action) throw new Error("There are no unsynced actions to undo.");
   if (!action.previous_match_json) {
-    throw new Error("This saved action cannot be undone on this version.");
+    const payloadResult = await database.query(
+      "SELECT payload_json FROM score_outbox WHERE action_id = ?",
+      [action.action_id]
+    );
+    const payload = JSON.parse(payloadResult.values?.[0]?.payload_json || "{}");
+    if (!["create_turf_match", "create_tcl_match"].includes(payload.type)) {
+      throw new Error("This saved action cannot be undone on this version.");
+    }
+    await database.executeSet({
+      set: [
+        {
+          statement: "DELETE FROM score_outbox WHERE match_id = ? AND status = 'pending'",
+          values: [id],
+        },
+        {
+          statement: "DELETE FROM downloaded_matches WHERE match_id = ?",
+          values: [id],
+        },
+      ],
+      transaction: true,
+    });
+    return null;
   }
   const restoredMatch = JSON.parse(action.previous_match_json);
   await database.executeSet({
@@ -187,17 +230,53 @@ export async function setAppSetting(key, value) {
   );
 }
 
-export async function getPendingScoreActions(matchId) {
+export async function saveOfflineCatalog(catalog) {
+  if (!catalog?.downloadedAt) throw new Error("The downloaded app data is missing its timestamp.");
+  await setAppSetting("offline_catalog", JSON.stringify(catalog));
   const database = await openDatabase();
-  const result = await database.query(
-    `SELECT action_id, sequence, payload_json
-     FROM score_outbox
-     WHERE match_id = ? AND status = 'pending'
-     ORDER BY sequence ASC`,
-    [String(matchId)]
-  );
+  for (const match of catalog.matches || []) {
+    if (!match._id) continue;
+    await database.run(
+      `INSERT INTO downloaded_matches (match_id, match_json, downloaded_at, server_updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(match_id) DO UPDATE SET
+         match_json = excluded.match_json,
+         downloaded_at = excluded.downloaded_at,
+         server_updated_at = excluded.server_updated_at
+       WHERE NOT EXISTS (
+         SELECT 1 FROM score_outbox
+         WHERE match_id = excluded.match_id AND status = 'pending'
+       )`,
+      [String(match._id), JSON.stringify(match), catalog.downloadedAt, match.updatedAt || null]
+    );
+  }
+}
+
+export async function getOfflineCatalog() {
+  const catalogJson = await getAppSetting("offline_catalog");
+  if (!catalogJson) return null;
+  return JSON.parse(catalogJson);
+}
+
+export async function getPendingScoreActions(matchId = null) {
+  const database = await openDatabase();
+  const result = matchId
+    ? await database.query(
+      `SELECT action_id, match_id, sequence, payload_json
+       FROM score_outbox
+       WHERE match_id = ? AND status = 'pending'
+       ORDER BY sequence ASC`,
+      [String(matchId)]
+    )
+    : await database.query(
+      `SELECT action_id, match_id, sequence, payload_json
+       FROM score_outbox
+       WHERE status = 'pending'
+       ORDER BY rowid ASC`
+    );
   return (result.values || []).map((row) => ({
     actionId: row.action_id,
+    matchId: row.match_id,
     sequence: Number(row.sequence),
     payload: JSON.parse(row.payload_json),
   }));

@@ -1,4 +1,8 @@
 const Match = require("../models/matches");
+const Player = require("../models/player.model");
+const Team = require("../models/team.model");
+const Turf = require("../models/turfs");
+const Tournament = require("../models/tcl.model");
 const { ADMIN_PASSWORD, createSession, getActiveSession, parseCookies, COOKIE_NAME, verify, sign } = require("../utils/auth");
 
 exports.login = async (req, res) => {
@@ -51,5 +55,37 @@ exports.getLiveMatch = async (req, res) => {
     } catch (err) {
         console.error("mobile_match_download_failed:", err);
         return res.status(400).json({ error: "Could not download this match." });
+    }
+};
+
+exports.getOfflineCatalog = async (req, res) => {
+    try {
+        const [players, teams, turfs, tournaments, matches] = await Promise.all([
+            Player.find({}).lean(),
+            Team.find({})
+                .populate("players", "name image image2 role handed")
+                .populate("captain", "name image image2 role handed")
+                .lean(),
+            Turf.find({}).lean(),
+            Tournament.find({}).lean(),
+            Match.find({}).lean(),
+        ]);
+        return res.json({
+            downloadedAt: new Date().toISOString(),
+            players,
+            teams,
+            turfs,
+            tournaments,
+            matches: matches.map((match) => ({
+                ...match,
+                lastBallSnapshotCount: (match.lastBallSnapshots || []).length,
+                redoBallSnapshotCount: (match.redoBallSnapshots || []).length,
+                lastBallSnapshots: undefined,
+                redoBallSnapshots: undefined,
+            })),
+        });
+    } catch (err) {
+        console.error("mobile_offline_catalog_failed:", err);
+        return res.status(500).json({ error: "Could not download app data." });
     }
 };
