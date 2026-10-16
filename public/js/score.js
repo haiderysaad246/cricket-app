@@ -424,13 +424,17 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerCallback = callback;
 
         cardPickerGrid.classList.add('ig-picker-grid');
-        cardPickerGrid.innerHTML = players.map((p) => `
-            <div class="ig-picker-item" data-id="${p.id}">
-                <div class="ig-picker-avatar-ring">
-                    <img src="${p.image}" alt="${p.name}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
-                    <span class="ig-picker-check"><i class="fa-solid fa-check"></i></span>
-                </div>
-                <span class="ig-picker-name">${p.name}</span>
+        cardPickerGrid.innerHTML = Array.from({ length: Math.ceil(players.length / 10) }, (_, pageIndex) => `
+            <div class="ig-picker-page">
+                ${players.slice(pageIndex * 10, pageIndex * 10 + 10).map((p) => `
+                    <div class="ig-picker-item" data-id="${p.id}">
+                        <div class="ig-picker-avatar-ring">
+                            <img src="${p.image}" alt="${p.name}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                            <span class="ig-picker-check"><i class="fa-solid fa-check"></i></span>
+                        </div>
+                        <span class="ig-picker-name">${p.name}</span>
+                    </div>
+                `).join('')}
             </div>
         `).join('');
 
