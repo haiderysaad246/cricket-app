@@ -347,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const undoCount = historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots');
         scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
         scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
-        scorePadUndoBtn.disabled = isBusy();
+        scorePadUndoBtn.disabled = isSubmitting;
 
         const redoCount = historyCount(match, 'redoBallSnapshotCount', 'redoBallSnapshots');
         scorePadRedoBtn.style.display = redoCount > 0 ? '' : 'none';
@@ -746,6 +746,7 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
 
         scorePadGrid.querySelectorAll('.score-pad-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
+                if (isSubmitting) return;
                 btn.classList.add('score-pad-btn-pressed');
                 setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 320);
 
@@ -921,13 +922,13 @@ scorePadCloseBtn.addEventListener('click', () => {
     // Undo/redo render from the locally available history immediately,
     // then replace that preview with the server's authoritative response.
     async function doUndo() {
-        if (isBusy()) return;
+        if (isSubmitting || !undoSnapshots.length) return;
         isSubmitting = true;
         updateUndoBtn();
         try {
-            await requestChain; // let any queued-but-unsent balls land first
             const preview = previewUndo();
             if (preview) handleMatchUpdate(preview, false, true);
+            await requestChain; // apply the undo after queued ball saves finish
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
             handleMatchUpdate(data.match, false, true);
         } catch (err) {
@@ -944,9 +945,9 @@ scorePadCloseBtn.addEventListener('click', () => {
         isSubmitting = true;
         updateUndoBtn();
         try {
-            await requestChain;
             const preview = previewRedo();
             if (preview) handleMatchUpdate(preview, false, true);
+            await requestChain;
             const data = await postJson(`/turfs/live/${matchId}/redo`, {});
             handleMatchUpdate(data.match, false, true);
         } catch (err) {
