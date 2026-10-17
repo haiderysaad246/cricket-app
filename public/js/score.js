@@ -6,6 +6,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
     let undoSnapshots = JSON.parse(JSON.stringify(match.lastBallSnapshots || []));
     let redoSnapshots = JSON.parse(JSON.stringify(match.redoBallSnapshots || []));
+    let pendingBatches = [];
+    let isRestoring = true;
+    let uploadPaused = false;
+    let scoreBlocked = false;
+    let persistenceWarningShown = false;
 
     // ---- Optimistic scoring queue -----------------------------------
     // Ball taps apply instantly in the browser using the exact same rules
@@ -14,9 +19,164 @@ document.addEventListener('DOMContentLoaded', () => {
     // never arrive at the server out of order. Undo/setup/end-innings stay
     // as plain round-trips and just wait for this chain to drain first.
     let requestChain = Promise.resolve();
+    let unsentBalls = [];
+    let ballFlushTimer = null;
     let pendingBalls = 0;
     let resyncTriggered = false;
-    function isBusy() { return isSubmitting || pendingBalls > 0; }
+    let storageChain = Promise.resolve();
+    const activeBatchIds = new Set();
+    function isBusy() { return isRestoring || scoreBlocked || isSubmitting || pendingBalls > 0; }
+
+    function showScoreNotice(message) {
+        let notice = document.querySelector('.score-resync-toast');
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.className = 'score-resync-toast';
+            document.body.appendChild(notice);
+        }
+        notice.textContent = message;
+        clearTimeout(notice.dismissTimer);
+        notice.dismissTimer = setTimeout(() => notice.remove(), 6000);
+    }
+
+    function storageRecord() {
+        const savedMatch = JSON.parse(JSON.stringify(match));
+        savedMatch.lastBallSnapshots = JSON.parse(JSON.stringify(undoSnapshots));
+        savedMatch.redoBallSnapshots = JSON.parse(JSON.stringify(redoSnapshots));
+        savedMatch.lastBallSnapshotCount = undoSnapshots.length;
+        savedMatch.redoBallSnapshotCount = redoSnapshots.length;
+        return {
+            matchId: String(matchId),
+            match: savedMatch,
+            undoSnapshots: JSON.parse(JSON.stringify(undoSnapshots)),
+            redoSnapshots: JSON.parse(JSON.stringify(redoSnapshots)),
+            pendingBatches: JSON.parse(JSON.stringify(pendingBatches)),
+            unsentBalls: JSON.parse(JSON.stringify(unsentBalls)),
+            savedAt: Date.now(),
+        };
+    }
+
+    function persistLocalState() {
+        if (!window.ScoreStorage) {
+            if (!persistenceWarningShown) {
+                persistenceWarningShown = true;
+                showScoreNotice('Local score recovery is unavailable in this browser. Keep the page open until the score is confirmed.');
+            }
+            return storageChain;
+        }
+        const record = storageRecord();
+        storageChain = storageChain
+            .then(() => window.ScoreStorage.save(record))
+            .catch((err) => {
+                console.error('score_local_persistence_failed', err);
+                if (!persistenceWarningShown) {
+                    persistenceWarningShown = true;
+                    showScoreNotice('This device could not save a local recovery copy. Keep this page open until the score is confirmed.');
+                }
+            });
+        return storageChain;
+    }
+
+    function flushBallQueue() {
+        if (ballFlushTimer) {
+            clearTimeout(ballFlushTimer);
+            ballFlushTimer = null;
+        }
+        if (!unsentBalls.length) return;
+        const batch = {
+            batchId: createActionId(),
+            actions: unsentBalls.splice(0, 6),
+        };
+        pendingBatches.push(batch);
+        persistLocalState();
+        if (!uploadPaused) enqueueBatchUpload(batch);
+        if (unsentBalls.length) flushBallQueue();
+    }
+
+    function enqueueBatchUpload(batch) {
+        if (uploadPaused || activeBatchIds.has(batch.batchId)) return;
+        activeBatchIds.add(batch.batchId);
+        requestChain = requestChain
+            .then(() => storageChain)
+            .then(() => uploadPaused ? undefined : sendBallsInBackground(batch))
+            .catch((err) => {
+                console.error('score_upload_chain_failed', err);
+                uploadPaused = true;
+                showScoreNotice('Score is saved on this device but not confirmed by the server. Reconnect to retry.');
+            })
+            .finally(() => {
+                activeBatchIds.delete(batch.batchId);
+            });
+    }
+
+    function createActionId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+        const bytes = new Uint8Array(16);
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+            window.crypto.getRandomValues(bytes);
+            return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+        }
+        return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    async function restorePendingScore() {
+        try {
+            if (!window.ScoreStorage) throw new Error('indexeddb_unavailable');
+            const saved = await window.ScoreStorage.load(matchId);
+            if (saved) {
+                const savedBatches = Array.isArray(saved.pendingBatches) ? saved.pendingBatches : [];
+                const savedUnsent = Array.isArray(saved.unsentBalls) ? saved.unsentBalls : [];
+                if (!saved.match || String(saved.match._id) !== String(matchId)
+                    || (saved.undoSnapshots && !Array.isArray(saved.undoSnapshots))
+                    || (saved.redoSnapshots && !Array.isArray(saved.redoSnapshots))
+                    || savedBatches.some((batch) => !batch.batchId || !Array.isArray(batch.actions)
+                        || batch.actions.some((action) => !action.body || !action.body.clientActionId || !action.predicted))
+                    || savedUnsent.some((action) => !action.body || !action.body.clientActionId || !action.predicted)) {
+                    throw new Error('indexeddb_score_record_invalid');
+                }
+                if (!savedBatches.length && !savedUnsent.length) {
+                    const cacheMatchesServer = saved.match.updatedAt === match.updatedAt
+                        && statesMatch(saved.match, match)
+                        && JSON.stringify(saved.undoSnapshots || []) === JSON.stringify(undoSnapshots)
+                        && JSON.stringify(saved.redoSnapshots || []) === JSON.stringify(redoSnapshots);
+                    if (!cacheMatchesServer) await window.ScoreStorage.save(storageRecord());
+                    return;
+                }
+                match = saved.match;
+                undoSnapshots = saved.undoSnapshots || match.lastBallSnapshots || [];
+                redoSnapshots = saved.redoSnapshots || match.redoBallSnapshots || [];
+                match.lastBallSnapshots = undoSnapshots;
+                match.redoBallSnapshots = redoSnapshots;
+                match.lastBallSnapshotCount = undoSnapshots.length;
+                match.redoBallSnapshotCount = redoSnapshots.length;
+                pendingBatches = savedBatches;
+                unsentBalls = savedUnsent;
+                pendingBalls = unsentBalls.length
+                    + pendingBatches.reduce((count, batch) => count + (batch.actions || []).length, 0);
+                window.MATCH = match;
+                handleMatchUpdate(match, false, true);
+                showScoreNotice('Restored unconfirmed scoring from this device. Uploading it to the server now.');
+            }
+        } catch (err) {
+            console.error('score_local_restore_failed', err);
+            showScoreNotice('Local score recovery could not be read. The server score is shown; review it before continuing.');
+        } finally {
+            isRestoring = false;
+            updateUndoBtn();
+        }
+
+        pendingBatches.forEach(enqueueBatchUpload);
+        if (unsentBalls.length) flushBallQueue();
+    }
+
+    window.addEventListener('online', () => {
+        if (!pendingBatches.length && !unsentBalls.length) return;
+        uploadPaused = false;
+        pendingBatches.forEach(enqueueBatchUpload);
+        if (unsentBalls.length) flushBallQueue();
+    });
 
     // Only the fields the shared rules can actually predict — excludes
     // statsAggregated (set server-side by aggregatePendingInningsStats,
@@ -38,9 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return pick(serverMatch) === pick(predictedMatch);
     }
 
-    // Server disagreed with our guess, or the request failed outright —
-    // drop everything still queued and reload straight from the server,
-    // with a small warning shown once the fresh page loads.
+    // Undo/redo mutations are server-authoritative, so refresh their state
+    // when one of those round trips cannot be confirmed.
     function resyncWithWarning(msg) {
         if (resyncTriggered) return;
         resyncTriggered = true;
@@ -50,56 +209,104 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyOptimistic(body) {
         const predicted = JSON.parse(JSON.stringify(match));
+        const predictedTeam = predicted[body.innings];
+        if (!predictedTeam.overStarted) {
+            predictedTeam.currentOverBalls = [];
+            predictedTeam.currentOverRuns = 0;
+            predictedTeam.overStarted = true;
+        }
         const result = window.BallRules.applyBall(predicted, match.currentInnings, body);
         return result.ok ? predicted : null;
     }
 
-    async function sendBallInBackground(body, predicted) {
+    async function sendBallsInBackground(batch) {
         if (resyncTriggered) return;
+        let authoritativeMatch = null;
+        let serverRejectedBatch = false;
         try {
-            const res = await fetch(`/turfs/live/${matchId}/ball`, {
+            const res = await fetch(`/turfs/live/${matchId}/balls`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify({ balls: batch.actions.map((action) => action.body) }),
             });
             const data = await res.json();
             if (!res.ok || !data.ok) {
+                serverRejectedBatch = true;
                 const error = data.error || `request_failed_${res.status}`;
                 throw new Error(error);
             }
-            if (!statesMatch(data.match, predicted)) {
-                resyncWithWarning('Resynced with the server — a couple of taps needed a double-check.');
+            const acceptedIds = new Set(data.appliedActionIds || []);
+            if (batch.actions.some((action) => !acceptedIds.has(action.body.clientActionId))) {
+                serverRejectedBatch = true;
+                authoritativeMatch = data.match;
+                pendingBatches = [];
+                unsentBalls = [];
+                pendingBalls = 0;
+                uploadPaused = true;
+                scoreBlocked = true;
+                match = authoritativeMatch;
+                undoSnapshots = JSON.parse(JSON.stringify(match.lastBallSnapshots || undoSnapshots));
+                redoSnapshots = JSON.parse(JSON.stringify(match.redoBallSnapshots || redoSnapshots));
+                showScoreNotice('The server accepted only part of the queued scoring. Please review the saved score before continuing.');
+            } else if (!statesMatch(data.match, batch.actions[batch.actions.length - 1].predicted)) {
+                serverRejectedBatch = true;
+                authoritativeMatch = data.match;
+                pendingBatches = [];
+                unsentBalls = [];
+                pendingBalls = 0;
+                uploadPaused = true;
+                scoreBlocked = true;
+                match = authoritativeMatch;
+                showScoreNotice('The server score differed from the local preview. The saved server score has been restored; please review it.');
+            } else {
+                pendingBatches = pendingBatches.filter((queued) => queued.batchId !== batch.batchId);
+                authoritativeMatch = data.match;
+            }
+            if (serverRejectedBatch) {
+                preserveTeamLogos(authoritativeMatch, window.MATCH);
+                handleMatchUpdate(authoritativeMatch, authoritativeMatch.status === 'completed', true);
+                await persistLocalState();
                 return;
             }
-            // Confirmed — swap in the server's copy so ids/timestamps stay
-            // authoritative. Screen already shows this, so no re-render.
-            preserveTeamLogos(data.match, match);
-            match = data.match;
-            window.MATCH = match;
-            team = match[match.currentInnings];
-            if (redirectToSessionIfDone(match)) return;
-            if (isInningsOver(team)) {
-                window.location.href = `/turfs/live/${matchId}`;
-                return;
-            }
-            updateUndoBtn();
         } catch (err) {
             console.error('score_request_failed', err);
-            resyncWithWarning(
-                err.message === 'match_not_found'
-                    ? 'This match has already ended — refreshing the score.'
-                    : `Score was resynced after ${err.message || 'a server error'}.`
-            );
+            uploadPaused = true;
+            if (serverRejectedBatch) {
+                showScoreNotice(`The server rejected this score action (${err.message || 'request error'}). It remains in the local journal for review.`);
+            } else {
+                showScoreNotice('Score is saved on this device but not confirmed by the server. Reconnect to retry.');
+            }
+            return;
         } finally {
-            pendingBalls = Math.max(0, pendingBalls - 1);
+            if (authoritativeMatch && !serverRejectedBatch) {
+                pendingBalls = Math.max(0, pendingBalls - batch.actions.length);
+            }
+            if (!resyncTriggered && pendingBalls === 0 && authoritativeMatch && !serverRejectedBatch) {
+                preserveTeamLogos(authoritativeMatch, match);
+                match = authoritativeMatch;
+                window.MATCH = match;
+                team = match[match.currentInnings];
+                if (redirectToSessionIfDone(match)) return;
+                if (isInningsOver(team)) {
+                    window.location.href = `/turfs/live/${matchId}`;
+                    return;
+                }
+            }
+            if (authoritativeMatch) await persistLocalState();
             updateUndoBtn();
         }
     }
 
     // Applies a ball instantly and sends it in the background, in order.
     function queueBall(body) {
-        const fullBody = { innings: match.currentInnings, ...body };
+        if (isRestoring || scoreBlocked) return;
+        const fullBody = { innings: match.currentInnings, ...body, clientActionId: createActionId() };
         const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
+        if (!beforeTeam.overStarted) {
+            beforeTeam.currentOverBalls = [];
+            beforeTeam.currentOverRuns = 0;
+            beforeTeam.overStarted = true;
+        }
         const predicted = applyOptimistic(fullBody);
         if (!predicted) {
             alert('Something went wrong: invalid_ball');
@@ -116,7 +323,13 @@ document.addEventListener('DOMContentLoaded', () => {
         predicted.redoBallSnapshotCount = 0;
         handleMatchUpdate(predicted, false);
         pendingBalls++;
-        requestChain = requestChain.then(() => sendBallInBackground(fullBody, predicted));
+        unsentBalls.push({ body: fullBody, predicted });
+        persistLocalState();
+        if (unsentBalls.length >= 6) {
+            flushBallQueue();
+        } else if (!ballFlushTimer) {
+            ballFlushTimer = setTimeout(flushBallQueue, 180);
+        }
     }
 
     async function postJson(url, body) {
@@ -347,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const undoCount = historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots');
         scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
         scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
-        scorePadUndoBtn.disabled = isSubmitting;
+        scorePadUndoBtn.disabled = isRestoring || scoreBlocked || uploadPaused || pendingBalls > 0 || isSubmitting;
 
         const redoCount = historyCount(match, 'redoBallSnapshotCount', 'redoBallSnapshots');
         scorePadRedoBtn.style.display = redoCount > 0 ? '' : 'none';
@@ -919,20 +1132,29 @@ scorePadCloseBtn.addEventListener('click', () => {
         return preview;
     }
 
-    // Undo/redo render from the locally available history immediately,
-    // then replace that preview with the server's authoritative response.
+    // Wait until queued balls are confirmed before changing local history;
+    // otherwise an interrupted upload could leave undo ahead of the server.
     async function doUndo() {
-        if (isSubmitting || !undoSnapshots.length) return;
+        if (isRestoring || scoreBlocked || uploadPaused || pendingBalls > 0 || isSubmitting || !undoSnapshots.length) return;
         isSubmitting = true;
         updateUndoBtn();
         try {
+            flushBallQueue();
+            await requestChain; // apply the undo after queued ball saves finish
+            if (uploadPaused || scoreBlocked || pendingBalls > 0) {
+                showScoreNotice('Undo is unavailable until the pending score is confirmed by the server.');
+                return;
+            }
             const preview = previewUndo();
             if (preview) handleMatchUpdate(preview, false, true);
-            await requestChain; // apply the undo after queued ball saves finish
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
             handleMatchUpdate(data.match, false, true);
         } catch (err) {
-            resyncWithWarning('Undo could not be confirmed — refreshing the saved match.');
+            if (uploadPaused || scoreBlocked || pendingBalls > 0) {
+                showScoreNotice('Undo is unavailable until the pending score is confirmed by the server.');
+            } else {
+                resyncWithWarning('Undo could not be confirmed — refreshing the saved match.');
+            }
         } finally {
             isSubmitting = false;
             updateUndoBtn();
@@ -947,6 +1169,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         try {
             const preview = previewRedo();
             if (preview) handleMatchUpdate(preview, false, true);
+            flushBallQueue();
             await requestChain;
             const data = await postJson(`/turfs/live/${matchId}/redo`, {});
             handleMatchUpdate(data.match, false, true);
@@ -1038,6 +1261,7 @@ scorePadCloseBtn.addEventListener('click', () => {
                 return;
             }
             isSubmitting = true;
+            flushBallQueue();
             requestChain.then(async () => {
                 try {
                     const data = await postJson(`/turfs/live/${matchId}/wicket-limit`, { innings, wicketLimit: value });
@@ -1073,6 +1297,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         }
         isSubmitting = true;
         try {
+            flushBallQueue();
             await requestChain;
             const data = await postJson(`/turfs/live/${matchId}/setup`, {
                 innings: match.currentInnings,
@@ -1114,6 +1339,7 @@ scorePadCloseBtn.addEventListener('click', () => {
 
     updateEditablePlayers();
     renderScorePad();
+    restorePendingScore();
 
     function promptNextBowler() {
         const cancelBtn = document.getElementById('cancelCardPicker');

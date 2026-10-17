@@ -57,6 +57,7 @@ function matchForBallResponse(match) {
     json.redoBallSnapshotCount = (json.redoBallSnapshots || []).length;
     delete json.lastBallSnapshots;
     delete json.redoBallSnapshots;
+    delete json.processedBallActionIds;
     return json;
 }
 function clearRedoSnapshots(match) {
@@ -140,6 +141,8 @@ function ballSentence(team, body) {
 function appendBallEvent(match, innings, body, beforeTeam) {
     if (!match.ballEvents) match.ballEvents = [];
     const legalBalls = beforeTeam.legalBalls || 0;
+    const recordedPayload = { ...body };
+    delete recordedPayload.clientActionId;
     match.ballEvents.push({
         innings,
         over: Math.floor(legalBalls / 6) + 1,
@@ -148,7 +151,7 @@ function appendBallEvent(match, innings, body, beforeTeam) {
             body.type !== "mankad" && !(body.type === "out" && body.isWide) && !(body.type === "out" && body.isNoBall),
         delivery: body.type !== "retire" && body.type !== "mankad",
         sentence: ballSentence(beforeTeam, body),
-        payload: JSON.parse(JSON.stringify(body)),
+        payload: JSON.parse(JSON.stringify(recordedPayload)),
         striker: playerName(beforeTeam, beforeTeam.strikerId),
         nonStriker: playerName(beforeTeam, beforeTeam.nonStrikerId),
         bowler: playerName(beforeTeam, beforeTeam.currentBowlerId),
@@ -980,53 +983,87 @@ exports.endInnings = async (req, res) => {
         res.status(400).json({ error: "end_innings_failed" });
     }
 };
+async function applyBallAction(match, body) {
+    const { innings, type } = body;
+    if (body.clientActionId && (match.processedBallActionIds || []).includes(body.clientActionId)) {
+        return { ok: true, duplicate: true, completed: match.status === "completed" };
+    }
+    if (!["team1", "team2"].includes(innings)) {
+        return { error: "invalid_innings" };
+    }
+    if (!type) return { error: "invalid_ball_type" };
+    const team = match[innings];
+    if (!team) return { error: "invalid_innings" };
+    if (!team.overStarted) {
+        team.currentOverBalls = [];
+        team.currentOverRuns = 0;
+        team.overStarted = true;
+    }
+    if (!match.lastBallSnapshots) match.lastBallSnapshots = [];
+    match.lastBallSnapshots.push({
+        innings,
+        currentInnings: match.currentInnings,
+        team: JSON.parse(JSON.stringify(team)),
+    });
+    if (match.lastBallSnapshots.length > 3) match.lastBallSnapshots.shift();
+    match.markModified("lastBallSnapshots");
+
+    const beforeTeam = JSON.parse(JSON.stringify(team));
+    const result = applyBall(match, innings, body);
+    if (!result.ok) return { error: result.error };
+    if (body.clientActionId) {
+        if (!match.processedBallActionIds) match.processedBallActionIds = [];
+        match.processedBallActionIds.push(body.clientActionId);
+        match.markModified("processedBallActionIds");
+    }
+    clearRedoSnapshots(match);
+    appendBallEvent(match, innings, body, beforeTeam);
+
+    if (type !== "retire") {
+        await aggregatePendingInningsStats(match);
+        await awardMatchMVP(match);
+    }
+    return { ok: true, completed: match.status === "completed" };
+}
+
+async function saveBallActions(req, res, bodies) {
+    const match = await Match.findById(req.params.id);
+    if (!match) return res.status(404).json({ error: "match_not_found" });
+    if (match.status !== "live") {
+        const appliedActionIds = bodies
+            .map((body) => body.clientActionId)
+            .filter((actionId) => actionId && (match.processedBallActionIds || []).includes(actionId));
+        if (appliedActionIds.length) {
+            return res.json({
+                ok: true,
+                appliedCount: appliedActionIds.length,
+                appliedActionIds,
+                match: matchForBallResponse(match),
+            });
+        }
+        return res.status(404).json({ error: "match_not_found" });
+    }
+    let appliedCount = 0;
+    const appliedActionIds = [];
+    for (const body of bodies) {
+        const result = await applyBallAction(match, body);
+        if (result.error) {
+            if (!appliedCount) return res.status(400).json({ error: result.error });
+            break;
+        }
+        appliedCount++;
+        if (body.clientActionId) appliedActionIds.push(body.clientActionId);
+        if (result.completed) break;
+    }
+    const justCompleted = match.status === "completed";
+    await match.save();
+    if (justCompleted) await tryCreatePlayoffs(match);
+    return res.json({ ok: true, appliedCount, appliedActionIds, match: matchForBallResponse(match) });
+}
+
 exports.recordBall = async (req, res) => {
     try {
-        const match = await Match.findOne({ _id: req.params.id, status: "live" });
-        if (!match) return res.status(404).json({ error: "match_not_found" });
-        const { innings, type } = req.body;
-        if (!["team1", "team2"].includes(innings)) {
-            return res.status(400).json({ error: "invalid_innings" });
-        }
-        if (!type) return res.status(400).json({ error: "invalid_ball_type" });
-        const team = match[innings];
-        if (!team) return res.status(400).json({ error: "invalid_innings" });
-        // Snapshot for undo — captured before any mutation, using the
-        // exact same shared rules the browser uses for optimistic scoring
-        // (public/js/ballRules.js), so the two can never drift apart.
-        if (!team.overStarted) {
-            team.currentOverBalls = [];
-            team.currentOverRuns = 0;
-            team.overStarted = true;
-        }
-        // Snapshot for undo — captured before any mutation below, so
-        // /undo can restore exactly this pre-ball state. Keeps only the
-        // last 3 balls, so up to 3 undos in a row are possible.
-        if (!match.lastBallSnapshots) match.lastBallSnapshots = [];
-        match.lastBallSnapshots.push({
-            innings,
-            currentInnings: match.currentInnings,
-            team: JSON.parse(JSON.stringify(team)),
-        });
-        if (match.lastBallSnapshots.length > 3) match.lastBallSnapshots.shift();
-        match.markModified("lastBallSnapshots");
-        // All the actual scoring rules live in public/js/ballRules.js now —
-        // the same file the browser uses for optimistic scoring — so the
-        // two can never drift apart.
-        const beforeTeam = JSON.parse(JSON.stringify(team));
-        const result = applyBall(match, innings, req.body);
-        if (!result.ok) return res.status(400).json({ error: result.error });
-        clearRedoSnapshots(match);
-        appendBallEvent(match, innings, req.body, beforeTeam);
-
-        if (type !== "retire") {
-            await aggregatePendingInningsStats(match);
-            await awardMatchMVP(match);
-        }
-        const justCompleted = match.status === "completed";
-        await match.save();
-        if (justCompleted) await tryCreatePlayoffs(match);
-        res.json({ ok: true, match: matchForBallResponse(match) });
+        return await saveBallActions(req, res, [req.body]);
     } catch (err) {
         console.error("record_ball_failed", {
             matchId: req.params.id,
@@ -1035,7 +1072,25 @@ exports.recordBall = async (req, res) => {
             message: err.message,
             stack: err.stack,
         });
-        res.status(500).json({ error: "ball_failed" });
+        return res.status(500).json({ error: "ball_failed" });
+    }
+};
+
+exports.recordBalls = async (req, res) => {
+    try {
+        const { balls } = req.body;
+        if (!Array.isArray(balls) || balls.length < 1 || balls.length > 6) {
+            return res.status(400).json({ error: "invalid_ball_batch" });
+        }
+        return await saveBallActions(req, res, balls);
+    } catch (err) {
+        console.error("record_ball_batch_failed", {
+            matchId: req.params.id,
+            count: req.body?.balls?.length,
+            message: err.message,
+            stack: err.stack,
+        });
+        return res.status(500).json({ error: "ball_batch_failed" });
     }
 };
 // Rolls every match played in this turf into each player's turfStats,

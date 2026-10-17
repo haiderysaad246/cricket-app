@@ -21,6 +21,7 @@ router.post("/live/:id/switch-innings", requireAdmin, turfController.switchInnin
 router.post("/live/:id/undo", requireAdmin, turfController.undoLastBall);
 router.post("/live/:id/redo", requireAdmin, turfController.redoLastBall);
 router.post("/live/:id/ball", requireAdmin, turfController.recordBall);
+router.post("/live/:id/balls", requireAdmin, turfController.recordBalls);
 router.post("/live/:id/end-innings", requireAdmin, turfController.endInnings);
 
 
