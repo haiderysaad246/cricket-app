@@ -21,6 +21,16 @@
     border-color: var(--color-amber-alt);
 }
 
+.tcl-session-error {
+    margin: 0 0 16px;
+    padding: 12px 16px;
+    border: 1px solid #e7a1a1;
+    border-radius: 10px;
+    background: #fff1f1;
+    color: #8b1f1f;
+    font-weight: 600;
+}
+
 .tcl-theme .resume-live-badge {
     background: var(--color-amber-bright);
     color: var(--color-ink-deep);

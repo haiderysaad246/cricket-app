@@ -11,6 +11,9 @@
             <i class="fa-solid fa-arrow-left"></i>
             <span>Back to TCL</span>
         </a>
+        <% if (sessionError) { %>
+            <div class="tcl-session-error" role="alert"><%= sessionError %></div>
+        <% } %>
 
         <% const liveMatch = matches.find(m => m.status === 'live') || null; %>
         <% const tournamentOvers = tournament.overs || (matches.find(m => m.stage === 'fixture') || {}).overs || 6; %>

@@ -357,7 +357,11 @@ exports.showSession = async (req, res) => {
             return new Date(a.createdAt) - new Date(b.createdAt);
         });
 
-        res.render("tcl/session.ejs", { tournament, teams, matches });
+        const sessionError = {
+            match_in_progress: "This tournament cannot be deleted while a match has recorded scoring activity.",
+            delete_failed: "The tournament could not be deleted. Please try again; if the problem continues, check the server logs.",
+        }[req.query.error] || null;
+        res.render("tcl/session.ejs", { tournament, teams, matches, sessionError });
     } catch (err) {
         console.log(err);
         res.redirect("/tcl?error=session_failed");
@@ -509,15 +513,14 @@ exports.deleteTournament = async (req, res) => {
         const tournament = await Tournament.findById(req.params.id);
         if (!tournament) return res.redirect("/tcl?error=not_found");
 
-        // Unlike a Turf, a fresh TCL match is created with status "live"
-        // the moment it's scheduled (see createMatch above) — it only
-        // really becomes "in progress" once the admin hits Start. So the
-        // block here has to check for actual bat/ball activity, not just
-        // status === "live", or every tournament with an unplayed fixture
-        // would be un-deletable.
+        // A scheduled or merely set-up fixture is still safe to remove.
+        // Protect tournaments only after scoring activity has been recorded.
         const liveMatches = await Match.find({ tournamentId: tournament._id, status: "live" });
         const inProgress = liveMatches.some(
-            (m) => m.team1.strikerId || m.team2.strikerId || m.team1.legalBalls || m.team2.legalBalls
+            (m) => (m.ballEvents || []).length > 0
+                || m.team1.legalBalls || m.team2.legalBalls
+                || m.team1.totalRuns || m.team2.totalRuns
+                || m.team1.wickets || m.team2.wickets
         );
         if (inProgress) {
             return res.redirect("/tcl/session/" + tournament._id + "?error=match_in_progress");
@@ -541,7 +544,11 @@ exports.deleteTournament = async (req, res) => {
         await Tournament.findByIdAndDelete(tournament._id);
         res.redirect("/tcl");
     } catch (err) {
-        console.log(err);
+        console.error("tournament_delete_failed", {
+            tournamentId: req.params.id,
+            message: err.message,
+            stack: err.stack,
+        });
         res.redirect("/tcl/session/" + req.params.id + "?error=delete_failed");
     }
 };
