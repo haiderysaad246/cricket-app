@@ -107,6 +107,8 @@
 
 .score-page-input-box .score-pad-grid .score-pad-btn {
     transition: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .score-page-input-box .score-pad-grid .score-pad-btn:active:not([disabled]),

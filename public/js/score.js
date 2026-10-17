@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const matchId = match._id;
     let team = match[match.currentInnings];
     let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
+    let undoSnapshots = JSON.parse(JSON.stringify(match.lastBallSnapshots || []));
+    let redoSnapshots = JSON.parse(JSON.stringify(match.redoBallSnapshots || []));
 
     // ---- Optimistic scoring queue -----------------------------------
     // Ball taps apply instantly in the browser using the exact same rules
@@ -96,12 +98,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Applies a ball instantly and sends it in the background, in order.
     function queueBall(body) {
         const fullBody = { innings: match.currentInnings, ...body };
+        const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
         const predicted = applyOptimistic(fullBody);
         if (!predicted) {
             alert('Something went wrong: invalid_ball');
             return;
         }
-        predicted.lastBallSnapshotCount = Math.min(historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots') + 1, 3);
+        undoSnapshots.push({
+            innings: match.currentInnings,
+            currentInnings: match.currentInnings,
+            team: beforeTeam,
+        });
+        if (undoSnapshots.length > 3) undoSnapshots.shift();
+        redoSnapshots = [];
+        predicted.lastBallSnapshotCount = undoSnapshots.length;
         predicted.redoBallSnapshotCount = 0;
         handleMatchUpdate(predicted, false);
         pendingBalls++;
@@ -336,12 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const undoCount = historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots');
         scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
         scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
-        scorePadUndoBtn.disabled = false;
+        scorePadUndoBtn.disabled = isBusy();
 
         const redoCount = historyCount(match, 'redoBallSnapshotCount', 'redoBallSnapshots');
         scorePadRedoBtn.style.display = redoCount > 0 ? '' : 'none';
         scorePadRedoBtn.title = redoCount > 0 ? `Redo last ball (${redoCount} available)` : 'Redo last ball';
-        scorePadRedoBtn.disabled = false;
+        scorePadRedoBtn.disabled = isBusy();
     }
 
     function historyCount(matchState, countKey, snapshotsKey) {
@@ -736,7 +746,7 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
         scorePadGrid.querySelectorAll('.score-pad-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
                 btn.classList.add('score-pad-btn-pressed');
-                setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 180);
+                setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 320);
 
                 // ---- root: parent nodes ----
                 // ---- root: parent nodes (Out / No Ball push a level,
@@ -855,20 +865,75 @@ scorePadCloseBtn.addEventListener('click', () => {
     abortInput();
 });
 
-    // Undo: steps the whole match back by exactly one ball. The backend
-    // only keeps a snapshot stack, so this can go back up to 3 balls.
+    function previewUndo() {
+        const snap = undoSnapshots.pop();
+        if (!snap) return null;
+        const preview = JSON.parse(JSON.stringify(match));
+        const teamAfterBall = JSON.parse(JSON.stringify(preview[snap.innings]));
+        let ballEventIndex = -1;
+        for (let index = (preview.ballEvents || []).length - 1; index >= 0; index--) {
+            const event = preview.ballEvents[index];
+            if (event.innings === snap.innings && event.payload) {
+                ballEventIndex = index;
+                break;
+            }
+        }
+        const ballEvent = ballEventIndex >= 0 ? preview.ballEvents[ballEventIndex] : null;
+        redoSnapshots.push({
+            innings: snap.innings,
+            currentInnings: preview.currentInnings,
+            team: teamAfterBall,
+            ballEvent,
+            ballEventIndex,
+        });
+        if (redoSnapshots.length > 3) redoSnapshots.shift();
+        preview[snap.innings] = snap.team;
+        if (ballEventIndex >= 0) preview.ballEvents.splice(ballEventIndex, 1);
+        preview.currentInnings = snap.currentInnings;
+        preview.lastBallSnapshotCount = undoSnapshots.length;
+        preview.redoBallSnapshotCount = redoSnapshots.length;
+        return preview;
+    }
+
+    function previewRedo() {
+        const snap = redoSnapshots.pop();
+        if (!snap) return null;
+        const preview = JSON.parse(JSON.stringify(match));
+        undoSnapshots.push({
+            innings: snap.innings,
+            currentInnings: preview.currentInnings,
+            team: JSON.parse(JSON.stringify(preview[snap.innings])),
+        });
+        if (undoSnapshots.length > 3) undoSnapshots.shift();
+        preview[snap.innings] = snap.team;
+        if (snap.ballEvent) {
+            const eventIndex = Math.max(0, Math.min(snap.ballEventIndex, (preview.ballEvents || []).length));
+            if (!preview.ballEvents) preview.ballEvents = [];
+            preview.ballEvents.splice(eventIndex, 0, snap.ballEvent);
+        }
+        preview.currentInnings = snap.currentInnings;
+        preview.lastBallSnapshotCount = undoSnapshots.length;
+        preview.redoBallSnapshotCount = redoSnapshots.length;
+        return preview;
+    }
+
+    // Undo/redo render from the locally available history immediately,
+    // then replace that preview with the server's authoritative response.
     async function doUndo() {
         if (isBusy()) return;
         isSubmitting = true;
-        scorePadUndoBtn.disabled = true;
+        updateUndoBtn();
         try {
             await requestChain; // let any queued-but-unsent balls land first
+            const preview = previewUndo();
+            if (preview) handleMatchUpdate(preview, false, true);
             const data = await postJson(`/turfs/live/${matchId}/undo`, {});
-            handleMatchUpdate(data.match, true, true); // don't prompt for a bowler while restoring a snapshot
+            handleMatchUpdate(data.match, false, true);
         } catch (err) {
-            scorePadUndoBtn.disabled = false;
+            resyncWithWarning('Undo could not be confirmed — refreshing the saved match.');
         } finally {
             isSubmitting = false;
+            updateUndoBtn();
         }
     }
     scorePadUndoBtn.addEventListener('click', doUndo);
@@ -876,15 +941,18 @@ scorePadCloseBtn.addEventListener('click', () => {
     async function doRedo() {
         if (isBusy()) return;
         isSubmitting = true;
-        scorePadRedoBtn.disabled = true;
+        updateUndoBtn();
         try {
             await requestChain;
+            const preview = previewRedo();
+            if (preview) handleMatchUpdate(preview, false, true);
             const data = await postJson(`/turfs/live/${matchId}/redo`, {});
-            handleMatchUpdate(data.match, true, true);
+            handleMatchUpdate(data.match, false, true);
         } catch (err) {
-            scorePadRedoBtn.disabled = false;
+            resyncWithWarning('Redo could not be confirmed — refreshing the saved match.');
         } finally {
             isSubmitting = false;
+            updateUndoBtn();
         }
     }
     scorePadRedoBtn.addEventListener('click', doRedo);
@@ -1025,6 +1093,10 @@ scorePadCloseBtn.addEventListener('click', () => {
     document.addEventListener('pointerdown', (e) => {
         const btn = e.target.closest('button, .score-pad-backbar, .ig-picker-item');
         if (!btn || btn.disabled) return;
+        if (btn.classList.contains('score-pad-btn')) {
+            btn.classList.add('score-pad-btn-pressed');
+            setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 320);
+        }
         btn.classList.add('is-pressed');
         setTimeout(() => btn.classList.remove('is-pressed'), 300);
     });

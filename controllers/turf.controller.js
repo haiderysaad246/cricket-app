@@ -653,49 +653,68 @@ async function aggregatePendingInningsStats(match) {
 async function reverseTeamStats(match, teamKey) {
     const team = match[teamKey];
     if (!team || !team.statsAggregated) return;
-    const keys = ["turfStats"];
-    for (const statsKey of keys) {
-        for (const row of team.batting) {
-            if (row.status === "yet_to_bat") continue;
-            const player = await Player.findById(row.id);
-            if (!player) continue;
-            const b = player[statsKey].batting;
-            const curTimesOut = b.average > 0 ? Math.round(b.runs / b.average) : 0;
-            const timesOut = row.status === "out" ? 1 : 0;
-            const newTimesOut = Math.max(curTimesOut - timesOut, 0);
-            b.matches = Math.max(b.matches - 1, 0);
-            b.innings = Math.max(b.innings - 1, 0);
-            b.runs = Math.max(b.runs - row.runs, 0);
-            b.ballsFaced = Math.max(b.ballsFaced - row.balls, 0);
-            b.dots = Math.max(b.dots - (row.dots || 0), 0);
-            b.fours = Math.max(b.fours - row.fours, 0);
-            b.sixes = Math.max(b.sixes - row.sixes, 0);
-            if (timesOut && row.runs === 0) b.ducks = Math.max(b.ducks - 1, 0);
-            b.strikeRate = b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0;
-            b.average = newTimesOut > 0 ? Number((b.runs / newTimesOut).toFixed(2)) : b.runs;
-            player.markModified(statsKey);
-            await player.save();
-        }
-        for (const row of team.bowling) {
-            if (!row.balls && !row.runs && !row.wickets) continue;
-            const player = await Player.findById(row.id);
-            if (!player) continue;
-            const bw = player[statsKey].bowling;
-            bw.innings = Math.max(bw.innings - 1, 0);
-            bw.wickets = Math.max(bw.wickets - (row.wickets || 0), 0);
-            bw.ballsBowled = Math.max(bw.ballsBowled - (row.balls || 0), 0);
-            bw.dots = Math.max(bw.dots - (row.dots || 0), 0);
-            bw.runsConceded = Math.max(bw.runsConceded - (row.runs || 0), 0);
-            bw.maidens = Math.max(bw.maidens - (row.maidens || 0), 0);
-            bw.hatTricks = Math.max(bw.hatTricks - (row.hatTrick ? 1 : 0), 0);
-            bw.overs = Math.max(bw.overs - (row.overs || 0), 0);
-            bw.economyRate = bw.ballsBowled > 0 ? Number((bw.runsConceded / (bw.ballsBowled / 6)).toFixed(2)) : 0;
-            bw.average = bw.wickets > 0 ? Number((bw.runsConceded / bw.wickets).toFixed(2)) : 0;
-            bw.strikeRate = bw.wickets > 0 ? Number((bw.ballsBowled / bw.wickets).toFixed(2)) : 0;
-            bw.dotBallPercentage = bw.ballsBowled > 0 ? Number(((bw.dots / bw.ballsBowled) * 100).toFixed(2)) : 0;
-            player.markModified(statsKey);
-            await player.save();
-        }
+    const battingRows = team.batting.filter((row) => row.status !== "yet_to_bat");
+    const bowlingRows = team.bowling.filter((row) => row.balls || row.runs || row.wickets);
+    const playerIds = [...new Set([...battingRows, ...bowlingRows].map((row) => String(row.id)))];
+    const players = await Player.find({ _id: { $in: playerIds } });
+    const playersById = new Map(players.map((player) => [String(player._id), player]));
+
+    for (const row of battingRows) {
+        const player = playersById.get(String(row.id));
+        if (!player) continue;
+        const batting = player.turfStats.batting;
+        const currentDismissals = batting.average > 0 ? Math.round(batting.runs / batting.average) : 0;
+        const dismissed = row.status === "out" ? 1 : 0;
+        batting.matches = Math.max(batting.matches - 1, 0);
+        batting.innings = Math.max(batting.innings - 1, 0);
+        batting.runs = Math.max(batting.runs - row.runs, 0);
+        batting.ballsFaced = Math.max(batting.ballsFaced - row.balls, 0);
+        batting.dots = Math.max(batting.dots - (row.dots || 0), 0);
+        batting.fours = Math.max(batting.fours - row.fours, 0);
+        batting.sixes = Math.max(batting.sixes - row.sixes, 0);
+        if (dismissed && row.runs === 0) batting.ducks = Math.max(batting.ducks - 1, 0);
+        batting.strikeRate = batting.ballsFaced > 0
+            ? Number(((batting.runs / batting.ballsFaced) * 100).toFixed(2))
+            : 0;
+        const remainingDismissals = Math.max(currentDismissals - dismissed, 0);
+        batting.average = remainingDismissals > 0
+            ? Number((batting.runs / remainingDismissals).toFixed(2))
+            : batting.runs;
+    }
+
+    for (const row of bowlingRows) {
+        const player = playersById.get(String(row.id));
+        if (!player) continue;
+        const bowling = player.turfStats.bowling;
+        bowling.innings = Math.max(bowling.innings - 1, 0);
+        bowling.wickets = Math.max(bowling.wickets - (row.wickets || 0), 0);
+        bowling.ballsBowled = Math.max(bowling.ballsBowled - (row.balls || 0), 0);
+        bowling.dots = Math.max(bowling.dots - (row.dots || 0), 0);
+        bowling.runsConceded = Math.max(bowling.runsConceded - (row.runs || 0), 0);
+        bowling.maidens = Math.max(bowling.maidens - (row.maidens || 0), 0);
+        bowling.hatTricks = Math.max(bowling.hatTricks - (row.hatTrick ? 1 : 0), 0);
+        bowling.overs = Math.max(bowling.overs - (row.overs || 0), 0);
+        bowling.economyRate = bowling.ballsBowled > 0
+            ? Number((bowling.runsConceded / (bowling.ballsBowled / 6)).toFixed(2))
+            : 0;
+        bowling.average = bowling.wickets > 0
+            ? Number((bowling.runsConceded / bowling.wickets).toFixed(2))
+            : 0;
+        bowling.strikeRate = bowling.wickets > 0
+            ? Number((bowling.ballsBowled / bowling.wickets).toFixed(2))
+            : 0;
+        bowling.dotBallPercentage = bowling.ballsBowled > 0
+            ? Number(((bowling.dots / bowling.ballsBowled) * 100).toFixed(2))
+            : 0;
+    }
+
+    if (players.length) {
+        await Player.bulkWrite(players.map((player) => ({
+            updateOne: {
+                filter: { _id: player._id },
+                update: { $set: { turfStats: player.turfStats.toObject() } },
+            },
+        })));
     }
     team.statsAggregated = false;
 }
