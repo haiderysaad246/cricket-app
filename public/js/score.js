@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         } finally {
             pendingBalls = Math.max(0, pendingBalls - 1);
+            updateUndoBtn();
         }
     }
 
