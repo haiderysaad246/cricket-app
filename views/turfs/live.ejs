@@ -14,14 +14,14 @@
         <% if (isAdmin) { %>
         <div class="live-end-match-form">
             <form action="/turfs/live/<%= match._id %>/end" method="POST"
-                  onsubmit="if (!navigator.onLine) { alert('No internet connection. Reconnect and try again.'); return false; } return confirm('End this match? Do this only once both innings are finished.');"
+                  onsubmit="if (!navigator.onLine) { alert('No internet connection. Reconnect and try again.'); return false; } return confirm('End this match? Do this only once both innings are finished.');">
                 <button type="submit" class="toolbar-btn toolbar-btn-danger">
                     <i class="fa-solid fa-flag-checkered"></i>
                     <span>End Match</span>
                 </button>
             </form>
             <form action="/turfs/live/<%= match._id %>/cancel" method="POST"
-                  onsubmit="if (!navigator.onLine) { alert('No internet connection. Reconnect and try again.'); return false; } return confirm('Cancel this match? This deletes it and cannot be undone.');"
+                  onsubmit="if (!navigator.onLine) { alert('No internet connection. Reconnect and try again.'); return false; } return confirm('Cancel this match? This deletes it and cannot be undone.');">
                 <button type="submit" class="toolbar-btn">
                     <i class="fa-solid fa-xmark"></i>
                     <span>Cancel Match</span>
@@ -43,12 +43,6 @@
 
         <% if (isAdmin) { %>
         <div class="scoring-toolbar">
-            <% if (match.status === 'completed' && (match.lastBallSnapshots || []).length) { %>
-            <button type="button" class="toolbar-btn toolbar-btn-primary" id="undoCompletedMatchBtn">
-                <i class="fa-solid fa-rotate-left"></i>
-                <span>Undo last ball</span>
-            </button>
-            <% } %>
             <button type="button" class="toolbar-btn toolbar-btn-primary" id="startInningsBtn">
                 <i class="fa-solid fa-play"></i>
                 <span id="startInningsLabel">Start</span>

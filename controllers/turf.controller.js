@@ -388,10 +388,9 @@ exports.showScorePad = async (req, res) => {
         const match = await Match.findById(req.params.id)
             .populate("team1TeamId", "logo")
             .populate("team2TeamId", "logo");
-        if (!match || (match.status !== "live" &&
-            !(match.status === "completed" && (match.lastBallSnapshots || []).length))) {
-            // Keep the normal session redirect for completed matches that
-            // no longer have undo history.
+        if (!match || match.status !== "live") {
+            // Finished matches can't be edited or undone, so send them
+            // back to the session page.
             const redirectUrl = match && match.tournamentId
                 ? "/tcl/session/" + match.tournamentId + "?addMatch=1"
                 : (match && match.turfId ? "/turfs/session/" + match.turfId : "/turfs");
@@ -950,6 +949,7 @@ exports.undoLastBall = async (req, res) => {
     try {
         const match = await Match.findById(req.params.id);
         if (!match) return res.status(404).json({ error: "match_not_found" });
+        if (match.status === "completed") return res.status(400).json({ error: "match_finished" });
         const stack = match.lastBallSnapshots || [];
         if (!stack.length) return res.status(400).json({ error: "nothing_to_undo" });
         const wasCompleted = match.status === "completed";

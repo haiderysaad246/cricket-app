@@ -348,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function queueBall(body) {
         if (isRestoring || scoreBlocked) return;
         if (match.status !== 'live') {
-            showScoreNotice('The match is finished. Undo a ball to reopen scoring.');
+            showScoreNotice('The match is finished.');
             return;
         }
         if (needsInternet('Scoring')) return;
@@ -587,8 +587,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Keep the scorer open after completion while its undo history remains.
     function redirectToSessionIfDone(m) {
-        if (m && m.status === 'completed'
-            && historyCount(m, 'lastBallSnapshotCount', 'lastBallSnapshots') === 0) {
+        if (m && m.status === 'completed') {
             if (m.tournamentId) {
                 window.location.href = `/tcl/session/${m.tournamentId}?addMatch=1`;
             } else if (m.turfId) {
@@ -858,7 +857,7 @@ function abortInput() {
             outType: 'runout',
             outPlayerId: runout.outPlayerId,
             fielderId: runout.fielderId,
-            newBatsmanId: null,
+            newBatsmanId: runout.newBatsmanId || null,
             runoutRuns: runout.runoutRuns,
             isNoBall: runout.isNoBall,
         };
@@ -952,8 +951,7 @@ function abortInput() {
 
         const { body } = pendingScoring;
         const fielder = findRow(team.bowling, body.fielderId);
-        const batter = findRow(team.batting, body.outPlayerId);
-        if (!fielder || !batter) {
+        if (!fielder) {
             pendingRunoutCard.hidden = true;
             pendingRunoutCard.innerHTML = '';
             return;
@@ -964,12 +962,16 @@ function abortInput() {
                 <span>${escapeHtml(player.name)}</span>
             </button>
         `;
+        const isStumpingOut = body.outType === 'stumping';
         const title = body.outType === 'catch' ? 'Caught' : (body.isWide ? 'Stumped + Wide' : 'Stumped');
+        // Stumped: tapping the title switches between Stumped / Stumped + Wide.
+        const titleHtml = isStumpingOut
+            ? `<button type="button" class="pending-runout-runs" data-toggle-wide-stump>${title}</button>`
+            : `<strong class="pending-runout-title">${title}</strong>`;
         pendingRunoutCard.innerHTML = `
             <div class="pending-runout-details">
-                <strong class="pending-runout-title">${title}</strong>
+                ${titleHtml}
                 ${playerButton('fielder', fielder)}
-                ${playerButton('batter', batter)}
             </div>
             <div class="pending-runout-actions">
                 <button type="button" class="pending-runout-confirm" data-confirm-pending aria-label="Confirm ${title.toLowerCase()}">
@@ -991,18 +993,37 @@ function abortInput() {
             if (!pendingScoring || pendingScoring.kind !== 'dismissal') return;
             const role = target.dataset.editPendingPlayer;
             const isStumping = pendingScoring.body.outType === 'stumping';
-            const players = role === 'fielder'
-                ? team.bowling.filter((player) => !isStumping || String(player.id) !== String(team.currentBowlerId))
-                : [findRow(team.batting, team.strikerId), findRow(team.batting, team.nonStrikerId)].filter(Boolean);
-            openCardPicker(players, role === 'fielder'
-                ? (isStumping ? 'Who Stumped It?' : 'Who Caught It?')
-                : 'Who Got Out?', (id) => {
+                        if (role !== 'fielder') return;
+            const players = team.bowling.filter((player) => !isStumping || String(player.id) !== String(team.currentBowlerId));
+            openCardPicker(players, isStumping ? 'Who Stumped It?' : 'Who Caught It?', (id) => {
                 if (!pendingScoring) return;
-                if (role === 'fielder') pendingScoring.body.fielderId = id;
-                else pendingScoring.body.outPlayerId = id;
+                pendingScoring.body.fielderId = id;
                 renderPendingRunout();
                 persistLocalState();
             });
+            return;
+        }
+
+        if (target.hasAttribute('data-toggle-wide-stump')) {
+            if (!pendingScoring || pendingScoring.kind !== 'dismissal'
+                || pendingScoring.body.outType !== 'stumping') return;
+            const body = pendingScoring.body;
+            body.isWide = !body.isWide;
+            // A wide stumping is not a legal ball, so whether a new batsman
+            // is needed (last ball of the innings) can change when toggling.
+            if (!newBatsmanRequired(!body.isWide)) {
+                body.newBatsmanId = null;
+            } else if (!body.newBatsmanId) {
+                pickNewBatsman(() => {
+                    if (!pendingScoring) return;
+                    pendingScoring.body.newBatsmanId = newBatsmanId;
+                    newBatsmanId = null;
+                    renderPendingRunout();
+                    persistLocalState();
+                }, !body.isWide);
+            }
+            renderPendingRunout();
+            persistLocalState();
             return;
         }
 
@@ -1072,17 +1093,22 @@ function abortInput() {
         }
     });
 
-    function pickNewBatsman(callback, isLegalBall) {
+    // Either no one's left in the squad (all out), or this wicket is
+    // itself the last legal ball of the overs — either way the
+    // innings is over and there's no new batsman to pick.
+    function newBatsmanRequired(isLegalBall) {
         const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
-        // Either no one's left in the squad (all out), or this wicket is
-        // itself the last legal ball of the overs — either way the
-        // innings is over and there's no new batsman to pick.
         const inningsEndingBall = isLegalBall && (team.legalBalls + 1) >= (match.overs * 6);
-        if (eligible.length === 0 || inningsEndingBall) {
+        return eligible.length > 0 && !inningsEndingBall;
+    }
+
+    function pickNewBatsman(callback, isLegalBall) {
+        if (!newBatsmanRequired(isLegalBall)) {
             newBatsmanId = null;
             if (callback) callback();
             return;
         }
+        const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
         openCardPicker(eligible, 'New Batsman', (id) => {
             newBatsmanId = id;
             if (callback) callback();
@@ -1250,7 +1276,9 @@ function abortInput() {
                         persistLocalState();
                         return;
                     }
-                    if (!commitPendingScoring()) return;
+                    const editingRunoutRuns = pendingRunout && currentLevel() === 'runoutRuns'
+                        && btn.dataset.runoutruns !== undefined;
+                    if (!editingRunoutRuns && !commitPendingScoring()) return;
                 }
 
                 // ---- root: parent nodes ----
@@ -1294,40 +1322,48 @@ function abortInput() {
                     resetOutState();
                     outType = btn.dataset.dismissal;
                     isWideStumping = outType === 'stumping' && btn.dataset.wideStump === '1';
-                    if (outType === 'catch') {
+                                        if (outType === 'catch') {
+                        // Striker is always the one out. After the fielder
+                        // is chosen, ask for the new batsman straight away.
                         pickFielder(() => {
-                            pendingScoring = {
-                                kind: 'dismissal',
-                                body: {
-                                    type: 'out',
-                                    outType: 'catch',
-                                    outPlayerId: team.strikerId,
-                                    fielderId,
-                                    newBatsmanId: null,
-                                },
-                            };
-                            navStack = ['main'];
-                            resetOutState();
-                            renderScorePad();
-                            persistLocalState();
+                            pickNewBatsman(() => {
+                                pendingScoring = {
+                                    kind: 'dismissal',
+                                    body: {
+                                        type: 'out',
+                                        outType: 'catch',
+                                        outPlayerId: team.strikerId,
+                                        fielderId,
+                                        newBatsmanId,
+                                    },
+                                };
+                                navStack = ['main'];
+                                resetOutState();
+                                renderScorePad();
+                                persistLocalState();
+                            }, true);
                         });
                     } else if (outType === 'stumping') {
+                        // Striker is always the one out. After the stumper
+                        // is chosen, ask for the new batsman straight away.
                         pickStumper(() => {
-                            pendingScoring = {
-                                kind: 'dismissal',
-                                body: {
-                                    type: 'out',
-                                    outType: 'stumping',
-                                    outPlayerId: team.strikerId,
-                                    fielderId,
-                                    newBatsmanId: null,
-                                    isWide: isWideStumping,
-                                },
-                            };
-                            navStack = ['main'];
-                            resetOutState();
-                            renderScorePad();
-                            persistLocalState();
+                            pickNewBatsman(() => {
+                                pendingScoring = {
+                                    kind: 'dismissal',
+                                    body: {
+                                        type: 'out',
+                                        outType: 'stumping',
+                                        outPlayerId: team.strikerId,
+                                        fielderId,
+                                        newBatsmanId,
+                                        isWide: isWideStumping,
+                                    },
+                                };
+                                navStack = ['main'];
+                                resetOutState();
+                                renderScorePad();
+                                persistLocalState();
+                            }, !isWideStumping);
                         });
                     } else if (outType === 'retired') {
                         // Retire never consumes a ball, so it can only end
@@ -1378,19 +1414,32 @@ function abortInput() {
                 if (btn.dataset.runoutruns !== undefined) {
                     runoutRuns = Number(btn.dataset.runoutruns);
                     if (pendingRunout) {
+                        // Editing the runs of an already staged run out:
+                        // the new batsman was already chosen, don't ask again.
                         pendingRunout.runoutRuns = runoutRuns;
-                    } else {
-                        pendingRunout = {
-                            fielderId,
-                            outPlayerId,
-                            runoutRuns,
-                            isNoBall: isNoBallRunout,
-                        };
+                        resetOutState();
+                        navStack = ['main'];
+                        renderScorePad();
+                        persistLocalState();
+                        return;
                     }
-                    resetOutState();
-                    navStack = ['main'];
-                    renderScorePad();
-                    persistLocalState();
+                    // New run out: right after the runs are entered, ask
+                    // for the new batsman (skipped if the innings is over).
+                    const stagedRunout = {
+                        fielderId,
+                        outPlayerId,
+                        runoutRuns,
+                        isNoBall: isNoBallRunout,
+                        newBatsmanId: null,
+                    };
+                    pickNewBatsman(() => {
+                        stagedRunout.newBatsmanId = newBatsmanId;
+                        pendingRunout = stagedRunout;
+                        resetOutState();
+                        navStack = ['main'];
+                        renderScorePad();
+                        persistLocalState();
+                    }, !stagedRunout.isNoBall);
                 }
             });
         });
@@ -1619,8 +1668,25 @@ scorePadCloseBtn.addEventListener('click', () => {
         setupPicks.bowler = team.currentBowlerId;
         Object.keys(setupChipIds).forEach(showSetupChip);
         updateSetupRoleAvailability();
+        // The bowler is changed by tapping the bowler on the score summary,
+        // so this popup only asks for one while the innings has no bowler yet.
+        document.getElementById('spBowlerGroup').style.display = team.currentBowlerId ? 'none' : '';
         scoreSetupOverlay.style.display = 'flex';
     }
+
+    // Rotate Strike: swaps striker and non-striker (use when the strike was
+    // entered wrong and undo is no longer possible). Takes effect on Save.
+    document.getElementById('rotateStrikeBtn').addEventListener('click', () => {
+        if (!setupPicks.striker || !setupPicks.nonStriker) {
+            showScoreNotice('Select both batters before rotating the strike.');
+            return;
+        }
+        const previousStriker = setupPicks.striker;
+        setupPicks.striker = setupPicks.nonStriker;
+        setupPicks.nonStriker = previousStriker;
+        showSetupChip('striker');
+        showSetupChip('nonStriker');
+    });
 
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
         const limitButton = e.target.closest('[data-wicket-limit]');
@@ -1683,7 +1749,9 @@ scorePadCloseBtn.addEventListener('click', () => {
         [['striker', team.strikerId], ['nonStriker', team.nonStrikerId]].forEach(([role, oldId]) => {
             const newId = setupPicks[role];
             const row = oldId ? findRow(team.batting, oldId) : null;
-            if (row && String(oldId) !== String(newId) && ((row.runs || 0) > 0 || (row.balls || 0) > 0)) {
+            // Swapping striker and non-striker is not a replacement: no runs move.
+            const stillBatting = [setupPicks.striker, setupPicks.nonStriker].map(String).includes(String(oldId));
+            if (row && !stillBatting && String(oldId) !== String(newId) && ((row.runs || 0) > 0 || (row.balls || 0) > 0)) {
                 swaps.push({ fromId: oldId, toId: newId, row });
             }
         });

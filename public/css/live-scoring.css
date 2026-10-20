@@ -1017,6 +1017,7 @@
 .pending-runout-card[hidden] { display: none; }
 .pending-runout-details {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
     min-width: 0;
