@@ -43,6 +43,12 @@
 
         <% if (isAdmin) { %>
         <div class="scoring-toolbar">
+            <% if (match.status === 'completed' && (match.lastBallSnapshots || []).length) { %>
+            <button type="button" class="toolbar-btn toolbar-btn-primary" id="undoCompletedMatchBtn">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span>Undo last ball</span>
+            </button>
+            <% } %>
             <button type="button" class="toolbar-btn toolbar-btn-primary" id="startInningsBtn">
                 <i class="fa-solid fa-play"></i>
                 <span id="startInningsLabel">Start</span>

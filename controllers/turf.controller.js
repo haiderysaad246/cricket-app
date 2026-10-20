@@ -385,23 +385,21 @@ exports.showLive = async (req, res) => {
 exports.showScorePad = async (req, res) => {
     const wantsJson = req.headers.accept?.includes("application/json");
     try {
-        const match = await Match.findOne({ _id: req.params.id, status: "live" })
+        const match = await Match.findById(req.params.id)
             .populate("team1TeamId", "logo")
             .populate("team2TeamId", "logo");
-        if (!match) {
-            // Match may have just auto-completed (maybeDeclareResult flips
-            // status to "completed" during scoring). Look it up without
-            // the status filter so we can redirect to the right session
-            // page instead of dumping the user on /turfs.
-            const completed = await Match.findById(req.params.id).lean();
-            const redirectUrl = completed && completed.tournamentId
-                ? "/tcl/session/" + completed.tournamentId + "?addMatch=1"
-                : (completed && completed.turfId ? "/turfs/session/" + completed.turfId : "/turfs");
+        if (!match || (match.status !== "live" &&
+            !(match.status === "completed" && (match.lastBallSnapshots || []).length))) {
+            // Keep the normal session redirect for completed matches that
+            // no longer have undo history.
+            const redirectUrl = match && match.tournamentId
+                ? "/tcl/session/" + match.tournamentId + "?addMatch=1"
+                : (match && match.turfId ? "/turfs/session/" + match.turfId : "/turfs");
             return respond(req, res, { json: { error: "match_not_found" }, redirect: redirectUrl });
         }
         const team = match[match.currentInnings];
         const isFullySetUp = !!(team.strikerId && team.nonStrikerId && team.currentBowlerId);
-        if (!isFullySetUp) {
+        if (!isFullySetUp && match.status === "live") {
             // Players haven't been picked for this innings yet — bounce
             // back to the match page where that setup modal lives.
             return respond(req, res, { json: { error: "innings_not_set_up", matchId: match._id }, redirect: "/turfs/live/" + match._id });
@@ -950,10 +948,11 @@ exports.switchInnings = async (req, res) => {
 };
 exports.undoLastBall = async (req, res) => {
     try {
-        const match = await Match.findOne({ _id: req.params.id, status: "live" });
+        const match = await Match.findById(req.params.id);
         if (!match) return res.status(404).json({ error: "match_not_found" });
         const stack = match.lastBallSnapshots || [];
         if (!stack.length) return res.status(400).json({ error: "nothing_to_undo" });
+        const wasCompleted = match.status === "completed";
         const snap = stack.pop();
         const teamAfterBall = JSON.parse(JSON.stringify(match[snap.innings]));
         let ballEventIndex = -1;
@@ -976,6 +975,21 @@ exports.undoLastBall = async (req, res) => {
         if (match.redoBallSnapshots.length > 3) match.redoBallSnapshots.shift();
         if (match[snap.innings].statsAggregated) {
             await reverseTeamStats(match, snap.innings);
+        }
+        if (wasCompleted) {
+            if (match.mvpAwarded) {
+                const previousMvp = computeMVP(match)[0];
+                if (previousMvp) {
+                    await Player.updateOne(
+                        { _id: previousMvp.id, matchMvpCount: { $gt: 0 } },
+                        { $inc: { matchMvpCount: -1 } },
+                    );
+                }
+            }
+            match.status = "live";
+            match.result = null;
+            match.winnerKey = null;
+            match.mvpAwarded = false;
         }
         match[snap.innings] = snap.team;
         if (ballEventIndex >= 0) match.ballEvents.splice(ballEventIndex, 1);
@@ -1021,11 +1035,15 @@ exports.redoLastBall = async (req, res) => {
             match.ballEvents.splice(eventIndex, 0, snap.ballEvent);
         }
         match.currentInnings = snap.currentInnings;
+        maybeDeclareResult(match);
+        await awardMatchMVP(match);
         match.markModified(snap.innings);
         match.markModified("lastBallSnapshots");
         match.markModified("redoBallSnapshots");
         match.markModified("ballEvents");
+        const justCompleted = match.status === "completed";
         await match.save();
+        if (justCompleted) await tryCreatePlayoffs(match);
         res.json({ ok: true, match: matchForBallResponse(match) });
     } catch (err) {
         console.log(err);

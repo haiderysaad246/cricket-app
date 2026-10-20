@@ -1019,3 +1019,75 @@
 .score-page .score-page-input-box .score-pad-grid.score-pad-grid-nb .score-pad-btn {
     min-height: 56px;
 }
+
+@media (max-width: 640px) {
+    .score-body {
+        height: 100vh;
+        height: 100dvh;
+        margin: 0;
+        overflow: hidden;
+    }
+
+    .score-page {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        padding: 8px 12px;
+        overflow: hidden;
+    }
+
+    .score-page-top {
+        flex: 0 0 auto;
+    }
+
+    .score-page-back-link {
+        margin-bottom: 6px;
+    }
+
+    .score-page-input-box {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+        margin-top: 8px;
+    }
+
+    .score-page-input-box .score-pad-header {
+        flex: 0 0 auto;
+        padding: 8px 46px;
+        font-size: 16px;
+    }
+
+    .score-page-input-box .score-pad-backbar {
+        flex: 0 0 auto;
+        padding: 8px 14px;
+    }
+
+    .score-page .score-page-input-box .score-pad-grid {
+        flex: 1 1 auto;
+        grid-auto-rows: minmax(0, 1fr);
+        min-height: 0;
+        max-height: none;
+        gap: 6px;
+        padding: 8px;
+        overflow: hidden;
+    }
+
+    .score-page .score-page-input-box .score-pad-grid .score-pad-btn {
+        min-height: 0;
+        padding: 6px;
+        font-size: 13px;
+    }
+
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-numbers .score-pad-btn,
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-nb .score-pad-btn {
+        min-height: 0;
+    }
+
+    .score-page-input-box #setPlayersBtn {
+        flex: 0 0 auto;
+        margin: 8px auto !important;
+    }
+}

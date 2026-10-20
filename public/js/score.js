@@ -294,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.MATCH = match;
                 team = match[match.currentInnings];
                 if (redirectToSessionIfDone(match)) return;
-                if (isInningsOver(team)) {
+                if (match.status === 'live' && isInningsOver(team)) {
                     window.location.href = `/turfs/live/${matchId}`;
                     return;
                 }
@@ -307,6 +307,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Applies a ball instantly and sends it in the background, in order.
     function queueBall(body) {
         if (isRestoring || scoreBlocked) return;
+        if (match.status !== 'live') {
+            showScoreNotice('The match is finished. Undo a ball to reopen scoring.');
+            return;
+        }
         if (needsInternet('Scoring')) return;
         const fullBody = { innings: match.currentInnings, ...body, clientActionId: createActionId() };
         const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
@@ -540,12 +544,10 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
-    // When a match auto-completes (maybeDeclareResult flips status to
-    // "completed" during scoring), send the user straight to the right
-    // session page instead of reloading the score pad — which would just
-    // bounce through a server redirect.
+    // Keep the scorer open after completion while its undo history remains.
     function redirectToSessionIfDone(m) {
-        if (m && m.status === 'completed') {
+        if (m && m.status === 'completed'
+            && historyCount(m, 'lastBallSnapshotCount', 'lastBallSnapshots') === 0) {
             if (m.tournamentId) {
                 window.location.href = `/tcl/session/${m.tournamentId}?addMatch=1`;
             } else if (m.turfId) {
@@ -606,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
         team = match[match.currentInnings];
 
         const isSetUp = !!(team && team.strikerId && team.nonStrikerId && team.currentBowlerId);
-        if (allowRedirect && isInningsOver(team)) {
+        if (allowRedirect && match.status === 'live' && isInningsOver(team)) {
             window.location.href = `/turfs/live/${matchId}`;
             return;
         }

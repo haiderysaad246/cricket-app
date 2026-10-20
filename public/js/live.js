@@ -36,6 +36,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return data;
     }
 
+    const undoCompletedMatchBtn = document.getElementById('undoCompletedMatchBtn');
+    if (undoCompletedMatchBtn) {
+        undoCompletedMatchBtn.addEventListener('click', async () => {
+            undoCompletedMatchBtn.disabled = true;
+            try {
+                await postJson(`/turfs/live/${matchId}/undo`, {});
+                refresh();
+            } catch (err) {
+                undoCompletedMatchBtn.disabled = false;
+                console.error('completed_match_undo_failed', err);
+            }
+        });
+    }
+
     function refresh() {
         window.location.reload();
     }
