@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let uploadPaused = false;
     let scoreBlocked = false;
     let persistenceWarningShown = false;
+    let pendingRunout = null;
 
     // ---- Optimistic scoring queue -----------------------------------
     // Ball taps apply instantly in the browser using the exact same rules
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
             redoSnapshots: JSON.parse(JSON.stringify(redoSnapshots)),
             pendingBatches: JSON.parse(JSON.stringify(pendingBatches)),
             unsentBalls: JSON.parse(JSON.stringify(unsentBalls)),
+            pendingRunout: pendingRunout ? JSON.parse(JSON.stringify(pendingRunout)) : null,
             savedAt: Date.now(),
         };
     }
@@ -138,6 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!saved.match || String(saved.match._id) !== String(matchId)
                     || (saved.undoSnapshots && !Array.isArray(saved.undoSnapshots))
                     || (saved.redoSnapshots && !Array.isArray(saved.redoSnapshots))
+                    || (saved.pendingRunout && (!saved.pendingRunout.fielderId
+                        || !saved.pendingRunout.outPlayerId
+                        || !Number.isInteger(saved.pendingRunout.runoutRuns)))
                     || savedBatches.some((batch) => !batch.batchId || !Array.isArray(batch.actions)
                         || batch.actions.some((action) => !action.body || !action.body.clientActionId || !action.predicted))
                     || savedUnsent.some((action) => !action.body || !action.body.clientActionId || !action.predicted)) {
@@ -148,10 +153,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         && statesMatch(saved.match, match)
                         && JSON.stringify(saved.undoSnapshots || []) === JSON.stringify(undoSnapshots)
                         && JSON.stringify(saved.redoSnapshots || []) === JSON.stringify(redoSnapshots);
-                    if (!cacheMatchesServer) await window.ScoreStorage.save(storageRecord());
+                    if (cacheMatchesServer) {
+                        pendingRunout = saved.pendingRunout || null;
+                        renderPendingRunout();
+                    } else {
+                        pendingRunout = null;
+                        await window.ScoreStorage.save(storageRecord());
+                    }
                     return;
                 }
                 match = saved.match;
+                pendingRunout = saved.pendingRunout || null;
                 undoSnapshots = saved.undoSnapshots || match.lastBallSnapshots || [];
                 redoSnapshots = saved.redoSnapshots || match.redoBallSnapshots || [];
                 match.lastBallSnapshots = undoSnapshots;
@@ -312,6 +324,25 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (needsInternet('Scoring')) return;
+        if (pendingRunout) {
+            const stagedRunout = pendingRunout;
+            const previousInnings = match.currentInnings;
+            pendingRunout = null;
+            renderPendingRunout();
+            queueBall(runoutBallBody(stagedRunout));
+            if (match.status !== 'live') return;
+            if (match.currentInnings !== previousInnings) {
+                showScoreNotice('Run out recorded. Set players for the new innings before scoring.');
+                return;
+            }
+            const currentTeam = match[match.currentInnings];
+            if (!currentTeam.strikerId || !currentTeam.nonStrikerId || !currentTeam.currentBowlerId) {
+                showScoreNotice('Run out recorded. Set the players before scoring the next ball.');
+                return;
+            }
+            queueBall(body);
+            return;
+        }
         const fullBody = { innings: match.currentInnings, ...body, clientActionId: createActionId() };
         const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
         if (!beforeTeam.overStarted) {
@@ -644,6 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const scorePadUndoBtn = document.getElementById('scorePadUndoBtn');
     const scorePadRedoBtn = document.getElementById('scorePadRedoBtn');
     const scorePadCloseBtn = document.getElementById('scorePadCloseBtn');
+    const pendingRunoutCard = document.getElementById('pendingRunoutCard');
     const cardPickerCloseBtn = document.getElementById('cardPickerCloseBtn');
 
     // ---- Shared single-select card picker (this page's own instance) ----
@@ -810,6 +842,105 @@ function abortInput() {
         });
     }
 
+    function runoutBallBody(runout) {
+        return {
+            type: 'out',
+            outType: 'runout',
+            outPlayerId: runout.outPlayerId,
+            fielderId: runout.fielderId,
+            newBatsmanId: null,
+            runoutRuns: runout.runoutRuns,
+            isNoBall: runout.isNoBall,
+        };
+    }
+
+    function renderPendingRunout() {
+        if (!pendingRunout || currentLevel() !== 'main') {
+            pendingRunoutCard.hidden = true;
+            pendingRunoutCard.innerHTML = '';
+            return;
+        }
+        const fielder = findRow(team.bowling, pendingRunout.fielderId);
+        const batter = findRow(team.batting, pendingRunout.outPlayerId);
+        if (!fielder || !batter) {
+            pendingRunoutCard.hidden = true;
+            pendingRunoutCard.innerHTML = '';
+            return;
+        }
+        const playerButton = (role, player) => `
+            <button type="button" class="pending-runout-player" data-edit-runout-player="${role}">
+                <img src="${escapeHtml(player.image || '/images/placeholder-player.svg')}" alt="${escapeHtml(player.name)}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                <span>${escapeHtml(player.name)}</span>
+            </button>
+        `;
+        pendingRunoutCard.innerHTML = `
+            <div class="pending-runout-details">
+                <strong class="pending-runout-title">Run Out</strong>
+                ${playerButton('fielder', fielder)}
+                ${playerButton('batter', batter)}
+                <button type="button" class="pending-runout-runs" data-edit-runout-runs>
+                    ${pendingRunout.runoutRuns} run${pendingRunout.runoutRuns === 1 ? '' : 's'}
+                </button>
+            </div>
+            <div class="pending-runout-actions">
+                <button type="button" class="pending-runout-confirm" data-confirm-runout aria-label="Confirm run out">
+                    <i class="fa-solid fa-check"></i>
+                </button>
+                <button type="button" class="pending-runout-cancel" data-cancel-runout aria-label="Discard run out">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        `;
+        pendingRunoutCard.hidden = false;
+    }
+
+    pendingRunoutCard.addEventListener('click', (event) => {
+        const target = event.target.closest('button');
+        if (!target) return;
+
+        if (target.hasAttribute('data-edit-runout-player')) {
+            const role = target.dataset.editRunoutPlayer;
+            const players = role === 'fielder'
+                ? team.bowling
+                : [findRow(team.batting, team.strikerId), findRow(team.batting, team.nonStrikerId)].filter(Boolean);
+            openCardPicker(players, role === 'fielder' ? 'Who Ran Out the Batter?' : 'Who Got Run Out?', (id) => {
+                if (!pendingRunout) return;
+                if (role === 'fielder') pendingRunout.fielderId = id;
+                else pendingRunout.outPlayerId = id;
+                renderPendingRunout();
+                persistLocalState();
+            });
+            return;
+        }
+
+        if (target.hasAttribute('data-edit-runout-runs')) {
+            navStack = ['main', 'runoutRuns'];
+            renderScorePad();
+            return;
+        }
+
+        if (target.hasAttribute('data-cancel-runout')) {
+            pendingRunout = null;
+            resetOutState();
+            navStack = ['main'];
+            renderScorePad();
+            persistLocalState();
+            return;
+        }
+
+        if (target.hasAttribute('data-confirm-runout')) {
+            const confirmedRunout = pendingRunout;
+            if (!confirmedRunout) return;
+            if (isRestoring || scoreBlocked || isSubmitting || match.status !== 'live') return;
+            if (needsInternet('Scoring')) return;
+            pendingRunout = null;
+            resetOutState();
+            navStack = ['main'];
+            renderScorePad();
+            queueBall(runoutBallBody(confirmedRunout));
+        }
+    });
+
     function pickNewBatsman(callback, isLegalBall) {
         const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
         // Either no one's left in the squad (all out), or this wicket is
@@ -827,10 +958,13 @@ function abortInput() {
         });
     }
 
-    // Run Out flow — shared by the top-level "Run Out" node and the
-    // "No Ball + Run Out" node. Who ran the batter out -> who got run
-    // out -> (pushed) Runs Completed -> who's the new batsman -> submit.
+    // Run Out flow — shared by regular and no-ball run-outs. The fielder,
+    // dismissed batter, and completed runs are staged for review before submit.
     function startRunoutFlow(isNoBall) {
+        if (pendingRunout) {
+            showScoreNotice('Confirm or discard the pending run out before entering another run out.');
+            return;
+        }
         resetOutState();
         outType = 'runout';
         isNoBallRunout = isNoBall;
@@ -896,6 +1030,7 @@ function abortInput() {
         scorePadBackBar.style.display = level === 'main' ? 'none' : 'flex';
         scorePadCloseBtn.style.display = 'none';
         updateUndoBtn();
+        renderPendingRunout();
         scorePadGrid.classList.toggle('score-pad-grid-main', level === 'main');
         scorePadGrid.classList.toggle('score-pad-grid-numbers', level === 'moreRuns');
         scorePadGrid.classList.toggle('score-pad-grid-nb', level === 'noball');
@@ -936,10 +1071,10 @@ function abortInput() {
                 <button type="button" class="score-pad-btn" data-dismissal="bowled">Bowled</button>
                 <button type="button" class="score-pad-btn" data-dismissal="catch">Caught</button>
                 <button type="button" class="score-pad-btn" data-action="stumpedmore">Stumped</button>
-                <button type="button" class="score-pad-btn" data-dismissal="hitwicket">Hit Wicket</button>
+                <button type="button" class="score-pad-btn" data-action="regularrunout">Run Out</button>
                 <button type="button" class="score-pad-btn" data-dismissal="retired">Retired Out</button>
                 <button type="button" class="score-pad-btn" data-dismissal="obstructing">Obstructing the Field</button>
-                <button type="button" class="score-pad-btn" data-action="regularrunout">Run Out</button>
+                <button type="button" class="score-pad-btn" data-dismissal="hitwicket">Hit Wicket</button>
                 <button type="button" class="score-pad-btn" data-action="mankad">Mankad</button>
             `;
         } else if (level === 'stumped') {
@@ -1071,8 +1206,20 @@ function abortInput() {
                 // ---- run-out runs-completed sub-screen ----
                 if (btn.dataset.runoutruns !== undefined) {
                     runoutRuns = Number(btn.dataset.runoutruns);
-                    // A run-out off a no ball isn't a legal delivery.
-                    pickNewBatsman(() => submitBall(), !isNoBallRunout);
+                    if (pendingRunout) {
+                        pendingRunout.runoutRuns = runoutRuns;
+                    } else {
+                        pendingRunout = {
+                            fielderId,
+                            outPlayerId,
+                            runoutRuns,
+                            isNoBall: isNoBallRunout,
+                        };
+                    }
+                    resetOutState();
+                    navStack = ['main'];
+                    renderScorePad();
+                    persistLocalState();
                 }
             });
         });

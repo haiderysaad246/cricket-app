@@ -15,11 +15,8 @@
             </div>
         </div>
 
-        <!-- Input box: header shows a live preview of the current selection,
-             back-bar steps up one level, grid shows the current level's
-             options, Done saves once a leaf option is picked. Only the
-             Runs branch is wired up for now — Out/Wide/No Ball are
-             disabled placeholders until we build those next. -->
+        <!-- The pending run-out review sits between the score-pad header
+             and its controls; ordinary score choices submit immediately. -->
         <div class="score-page-input-box" id="scoreInputBox">
             <button type="button" class="score-pad-undo-btn" id="scorePadUndoBtn" title="Undo last ball" style="display:none;">
     <i class="fa-solid fa-rotate-left"></i>
@@ -31,6 +28,7 @@
     <i class="fa-solid fa-xmark"></i>
 </button>
             <div class="score-pad-header" id="scorePadHeader"></div>
+            <div class="pending-runout-card" id="pendingRunoutCard" hidden></div>
             <div class="score-pad-backbar" id="scorePadBackBar">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>Back</span>
