@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let scoreBlocked = false;
     let persistenceWarningShown = false;
     let pendingRunout = null;
+    let pendingScoring = null;
 
     // ---- Optimistic scoring queue -----------------------------------
     // Ball taps apply instantly in the browser using the exact same rules
@@ -61,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pendingBatches: JSON.parse(JSON.stringify(pendingBatches)),
             unsentBalls: JSON.parse(JSON.stringify(unsentBalls)),
             pendingRunout: pendingRunout ? JSON.parse(JSON.stringify(pendingRunout)) : null,
+            pendingScoring: pendingScoring ? JSON.parse(JSON.stringify(pendingScoring)) : null,
             savedAt: Date.now(),
         };
     }
@@ -143,6 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     || (saved.pendingRunout && (!saved.pendingRunout.fielderId
                         || !saved.pendingRunout.outPlayerId
                         || !Number.isInteger(saved.pendingRunout.runoutRuns)))
+                    || (saved.pendingScoring && (!saved.pendingScoring.kind
+                        || !saved.pendingScoring.body
+                        || !['out', 'noball'].includes(saved.pendingScoring.body.type)))
                     || savedBatches.some((batch) => !batch.batchId || !Array.isArray(batch.actions)
                         || batch.actions.some((action) => !action.body || !action.body.clientActionId || !action.predicted))
                     || savedUnsent.some((action) => !action.body || !action.body.clientActionId || !action.predicted)) {
@@ -155,15 +160,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         && JSON.stringify(saved.redoSnapshots || []) === JSON.stringify(redoSnapshots);
                     if (cacheMatchesServer) {
                         pendingRunout = saved.pendingRunout || null;
+                        pendingScoring = saved.pendingScoring || null;
                         renderPendingRunout();
                     } else {
                         pendingRunout = null;
+                        pendingScoring = null;
                         await window.ScoreStorage.save(storageRecord());
                     }
                     return;
                 }
                 match = saved.match;
                 pendingRunout = saved.pendingRunout || null;
+                pendingScoring = saved.pendingScoring || null;
                 undoSnapshots = saved.undoSnapshots || match.lastBallSnapshots || [];
                 redoSnapshots = saved.redoSnapshots || match.redoBallSnapshots || [];
                 match.lastBallSnapshots = undoSnapshots;
@@ -316,6 +324,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function commitPendingScoring() {
+        if (!pendingRunout && !pendingScoring) return true;
+        if (needsInternet('Scoring')) return false;
+        const previousInnings = match.currentInnings;
+        const body = pendingRunout
+            ? runoutBallBody(pendingRunout)
+            : pendingScoring.body;
+        pendingRunout = null;
+        pendingScoring = null;
+        renderPendingRunout();
+        queueBall(body);
+        if (match.status !== 'live' || match.currentInnings !== previousInnings) return false;
+        const currentTeam = match[match.currentInnings];
+        if (!currentTeam.strikerId || !currentTeam.nonStrikerId || !currentTeam.currentBowlerId) {
+            showScoreNotice('Input recorded. Set the players before scoring the next ball.');
+            return false;
+        }
+        return true;
+    }
+
     // Applies a ball instantly and sends it in the background, in order.
     function queueBall(body) {
         if (isRestoring || scoreBlocked) return;
@@ -324,25 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (needsInternet('Scoring')) return;
-        if (pendingRunout) {
-            const stagedRunout = pendingRunout;
-            const previousInnings = match.currentInnings;
-            pendingRunout = null;
-            renderPendingRunout();
-            queueBall(runoutBallBody(stagedRunout));
-            if (match.status !== 'live') return;
-            if (match.currentInnings !== previousInnings) {
-                showScoreNotice('Run out recorded. Set players for the new innings before scoring.');
-                return;
-            }
-            const currentTeam = match[match.currentInnings];
-            if (!currentTeam.strikerId || !currentTeam.nonStrikerId || !currentTeam.currentBowlerId) {
-                showScoreNotice('Run out recorded. Set the players before scoring the next ball.');
-                return;
-            }
-            queueBall(body);
-            return;
-        }
+        if (!commitPendingScoring()) return;
         const fullBody = { innings: match.currentInnings, ...body, clientActionId: createActionId() };
         const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
         if (!beforeTeam.overStarted) {
@@ -854,10 +864,27 @@ function abortInput() {
         };
     }
 
+    function noBallBody(option) {
+        const runsByOption = { dot: 0, one: 1, two: 2, three: 3, four_run: 4, five: 5, four: 4, six: 6 };
+        return {
+            type: 'noball',
+            noballRuns: runsByOption[option],
+            noballBoundary: option === 'four' ? 'four' : (option === 'six' ? 'six' : null),
+        };
+    }
+
     function renderPendingRunout() {
-        if (!pendingRunout || currentLevel() !== 'main') {
+        if (currentLevel() !== 'main') {
             pendingRunoutCard.hidden = true;
             pendingRunoutCard.innerHTML = '';
+            return;
+        }
+        if (!pendingRunout) {
+            if (pendingScoring) renderPendingScoring();
+            else {
+                pendingRunoutCard.hidden = true;
+                pendingRunoutCard.innerHTML = '';
+            }
             return;
         }
         const fielder = findRow(team.bowling, pendingRunout.fielderId);
@@ -894,9 +921,113 @@ function abortInput() {
         pendingRunoutCard.hidden = false;
     }
 
+    function noBallLabel(body) {
+        if (body.noballBoundary === 'four') return 'No Ball + Four';
+        if (body.noballBoundary === 'six') return 'No Ball + Six';
+        const runs = Number(body.noballRuns || 0);
+        return runs ? `No Ball + ${runs} Run${runs === 1 ? '' : 's'}` : 'No Ball';
+    }
+
+    function renderPendingScoring() {
+        if (pendingScoring.kind === 'noball') {
+            pendingRunoutCard.innerHTML = `
+                <div class="pending-runout-details">
+                    <strong class="pending-runout-title">Pending</strong>
+                    <button type="button" class="pending-runout-runs" data-edit-pending-noball>
+                        ${escapeHtml(noBallLabel(pendingScoring.body))}
+                    </button>
+                </div>
+                <div class="pending-runout-actions">
+                    <button type="button" class="pending-runout-confirm" data-confirm-pending aria-label="Confirm no ball">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                    <button type="button" class="pending-runout-cancel" data-cancel-pending aria-label="Discard no ball">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `;
+            pendingRunoutCard.hidden = false;
+            return;
+        }
+
+        const { body } = pendingScoring;
+        const fielder = findRow(team.bowling, body.fielderId);
+        const batter = findRow(team.batting, body.outPlayerId);
+        if (!fielder || !batter) {
+            pendingRunoutCard.hidden = true;
+            pendingRunoutCard.innerHTML = '';
+            return;
+        }
+        const playerButton = (role, player) => `
+            <button type="button" class="pending-runout-player" data-edit-pending-player="${role}">
+                <img src="${escapeHtml(player.image || '/images/placeholder-player.svg')}" alt="${escapeHtml(player.name)}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                <span>${escapeHtml(player.name)}</span>
+            </button>
+        `;
+        const title = body.outType === 'catch' ? 'Caught' : (body.isWide ? 'Stumped + Wide' : 'Stumped');
+        pendingRunoutCard.innerHTML = `
+            <div class="pending-runout-details">
+                <strong class="pending-runout-title">${title}</strong>
+                ${playerButton('fielder', fielder)}
+                ${playerButton('batter', batter)}
+            </div>
+            <div class="pending-runout-actions">
+                <button type="button" class="pending-runout-confirm" data-confirm-pending aria-label="Confirm ${title.toLowerCase()}">
+                    <i class="fa-solid fa-check"></i>
+                </button>
+                <button type="button" class="pending-runout-cancel" data-cancel-pending aria-label="Discard ${title.toLowerCase()}">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        `;
+        pendingRunoutCard.hidden = false;
+    }
+
     pendingRunoutCard.addEventListener('click', (event) => {
         const target = event.target.closest('button');
         if (!target) return;
+
+        if (target.hasAttribute('data-edit-pending-player')) {
+            if (!pendingScoring || pendingScoring.kind !== 'dismissal') return;
+            const role = target.dataset.editPendingPlayer;
+            const isStumping = pendingScoring.body.outType === 'stumping';
+            const players = role === 'fielder'
+                ? team.bowling.filter((player) => !isStumping || String(player.id) !== String(team.currentBowlerId))
+                : [findRow(team.batting, team.strikerId), findRow(team.batting, team.nonStrikerId)].filter(Boolean);
+            openCardPicker(players, role === 'fielder'
+                ? (isStumping ? 'Who Stumped It?' : 'Who Caught It?')
+                : 'Who Got Out?', (id) => {
+                if (!pendingScoring) return;
+                if (role === 'fielder') pendingScoring.body.fielderId = id;
+                else pendingScoring.body.outPlayerId = id;
+                renderPendingRunout();
+                persistLocalState();
+            });
+            return;
+        }
+
+        if (target.hasAttribute('data-edit-pending-noball')) {
+            navStack = ['main', 'noball'];
+            renderScorePad();
+            return;
+        }
+
+        if (target.hasAttribute('data-cancel-pending')) {
+            pendingScoring = null;
+            renderPendingRunout();
+            persistLocalState();
+            return;
+        }
+
+        if (target.hasAttribute('data-confirm-pending')) {
+            if (!pendingScoring || isRestoring || scoreBlocked || isSubmitting || match.status !== 'live') return;
+            if (needsInternet('Scoring')) return;
+            const body = pendingScoring.body;
+            pendingScoring = null;
+            renderPendingRunout();
+            queueBall(body);
+            return;
+        }
 
         if (target.hasAttribute('data-edit-runout-player')) {
             const role = target.dataset.editRunoutPlayer;
@@ -1110,6 +1241,18 @@ function abortInput() {
                 btn.classList.add('score-pad-btn-pressed');
                 setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 320);
 
+                if ((pendingRunout || pendingScoring) && scorePadGrid.contains(btn)) {
+                    if (pendingScoring && pendingScoring.kind === 'noball'
+                        && currentLevel() === 'noball' && btn.dataset.nb) {
+                        pendingScoring.body = noBallBody(btn.dataset.nb);
+                        navStack = ['main'];
+                        renderScorePad();
+                        persistLocalState();
+                        return;
+                    }
+                    if (!commitPendingScoring()) return;
+                }
+
                 // ---- root: parent nodes ----
                 // ---- root: parent nodes (Out / No Ball push a level,
                 // Wide submits immediately, Run Out opens its picker
@@ -1152,9 +1295,40 @@ function abortInput() {
                     outType = btn.dataset.dismissal;
                     isWideStumping = outType === 'stumping' && btn.dataset.wideStump === '1';
                     if (outType === 'catch') {
-                        pickFielder(() => pickNewBatsman(() => submitBall(), true));
+                        pickFielder(() => {
+                            pendingScoring = {
+                                kind: 'dismissal',
+                                body: {
+                                    type: 'out',
+                                    outType: 'catch',
+                                    outPlayerId: team.strikerId,
+                                    fielderId,
+                                    newBatsmanId: null,
+                                },
+                            };
+                            navStack = ['main'];
+                            resetOutState();
+                            renderScorePad();
+                            persistLocalState();
+                        });
                     } else if (outType === 'stumping') {
-                        pickStumper(() => pickNewBatsman(() => submitBall(), !isWideStumping));
+                        pickStumper(() => {
+                            pendingScoring = {
+                                kind: 'dismissal',
+                                body: {
+                                    type: 'out',
+                                    outType: 'stumping',
+                                    outPlayerId: team.strikerId,
+                                    fielderId,
+                                    newBatsmanId: null,
+                                    isWide: isWideStumping,
+                                },
+                            };
+                            navStack = ['main'];
+                            resetOutState();
+                            renderScorePad();
+                            persistLocalState();
+                        });
                     } else if (outType === 'retired') {
                         // Retire never consumes a ball, so it can only end
                         // the innings via all-out, never via overs.
@@ -1186,15 +1360,12 @@ function abortInput() {
                     return;
                 }
 
-                // ---- no ball: runs + boundaries submit straight away ----
+                // ---- stage no-ball details for review before submission ----
                 if (btn.dataset.nb) {
-                    const nbMap = { dot: 0, one: 1, two: 2, three: 3, four_run: 4, five: 5, four: 4, six: 6 };
-                    const nb = btn.dataset.nb;
-                    submitDirect({
-                        type: 'noball',
-                        noballRuns: nbMap[nb],
-                        noballBoundary: nb === 'four' ? 'four' : (nb === 'six' ? 'six' : null),
-                    });
+                    pendingScoring = { kind: 'noball', body: noBallBody(btn.dataset.nb) };
+                    navStack = ['main'];
+                    renderScorePad();
+                    persistLocalState();
                     return;
                 }
 
