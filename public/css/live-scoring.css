@@ -1074,6 +1074,23 @@
         overflow: hidden;
     }
 
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(1),
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(2),
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(6),
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(7) {
+        grid-column: span 3;
+    }
+
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(3),
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(4),
+    .score-page .score-page-input-box .score-pad-grid.score-pad-grid-main .score-pad-btn:nth-child(5) {
+        grid-column: span 2;
+    }
+
     .score-page .score-page-input-box .score-pad-grid .score-pad-btn {
         min-height: 0;
         padding: 6px;

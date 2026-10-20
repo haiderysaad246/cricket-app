@@ -896,6 +896,7 @@ function abortInput() {
         scorePadBackBar.style.display = level === 'main' ? 'none' : 'flex';
         scorePadCloseBtn.style.display = 'none';
         updateUndoBtn();
+        scorePadGrid.classList.toggle('score-pad-grid-main', level === 'main');
         scorePadGrid.classList.toggle('score-pad-grid-numbers', level === 'moreRuns');
         scorePadGrid.classList.toggle('score-pad-grid-nb', level === 'noball');
         
@@ -914,11 +915,11 @@ function abortInput() {
                 </button>
                 <button type="button" class="score-pad-btn" data-run="four">4 (Four)</button>
                 <button type="button" class="score-pad-btn" data-run="six">6 (Six)</button>
+                <button type="button" class="score-pad-btn" data-run="one_nr">1 (No Rotation)</button>
                 <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="out">
                     <i class="fa-solid fa-xmark"></i>
                     <span>Out</span>
                 </button>
-                <button type="button" class="score-pad-btn" data-run="one_nr">1 (No Rotation)</button>
                 <button type="button" class="score-pad-btn score-pad-btn-parent score-pad-btn-span2" data-parent="noball">
                     <i class="fa-solid fa-shoe-prints"></i>
                     <span>No Ball</span>
