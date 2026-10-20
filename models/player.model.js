@@ -10,6 +10,7 @@ const battingStatsSchema = new Schema({
     average: { type: Number, default: 0 },
     strikeRate: { type: Number, default: 0 },
     highest: { type: Number, default: 0 },
+    highestBalls: { type: Number, default: 0 },
     ducks: { type: Number, default: 0 },
     ballsFaced: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },

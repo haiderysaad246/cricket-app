@@ -7,7 +7,7 @@ const BATTING_FIELDS = [
   { label: "Average Dots / Over", render: (b) => b.ballsFaced > 0 ? ((b.dots || 0) * 6 / b.ballsFaced).toFixed(2) : "0.00" },
   { label: "Strike Rate", render: (b) => b.strikeRate },
   { label: "4s / 6s", render: (b) => `${b.fours} / ${b.sixes}` },
-  { label: "Highest", render: (b) => b.highest },
+  { label: "Highest", render: (b) => b.highestBalls ? `${b.highest} (${b.highestBalls} balls)` : b.highest },
 ];
 
 const BOWLING_FIELDS = [

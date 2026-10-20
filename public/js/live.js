@@ -207,6 +207,10 @@ document.addEventListener('DOMContentLoaded', () => {
             setupForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        if (!navigator.onLine) {
+            alert('No internet connection. Reconnect and try again.');
+            return;
+        }
         if (setupMode === 'initial') {
             const strikerId = roleValues.striker;
             const nonStrikerId = roleValues.nonStriker;

@@ -7,6 +7,8 @@ const Team = require("../models/team.model");
 const Tournament = require("../models/tcl.model");
 const { maybeCreatePlayoffMatches, maybeCreateSuperOver } = require("./tcl.controller");
 const { applyBall } = require("../public/js/ballRules");
+const transferBatter = applyBall.transferBatter;
+const transferBowlerSpell = applyBall.transferBowlerSpell;
 // Wraps maybeCreatePlayoffMatches/maybeCreateSuperOver so a failure never
 // breaks the match flow — both are nice-to-haves, not blockers for scoring.
 // Super Over check runs first since a freshly-created Super Over match
@@ -601,13 +603,18 @@ async function applyTeamStats(match, team, statsKey) {
                 [`${statsKey}.batting.sixes`]: row.sixes || 0,
                 [`${statsKey}.batting.ducks`]: timesOut && row.runs === 0 ? 1 : 0,
             },
-            $max: { [`${statsKey}.batting.highest`]: row.runs || 0 },
         };
         const updated = await Player.findByIdAndUpdate(row.id, update, { returnDocument: "after" }).lean();
         if (!updated) throw new Error(`player_not_found:${row.id}`);
         const b = updated[statsKey].batting;
         const timesOutTotal = b.average > 0 ? Math.round(b.runs / b.average) : 0;
+        const isNewHighest = row.runs > 0 && (row.runs > b.highest
+            || (row.runs === b.highest && (!b.highestBalls || row.balls < b.highestBalls)));
         const derived = {
+            ...(isNewHighest ? {
+                [`${statsKey}.batting.highest`]: row.runs,
+                [`${statsKey}.batting.highestBalls`]: row.balls || 0,
+            } : {}),
             [`${statsKey}.batting.strikeRate`]: b.ballsFaced > 0 ? Number(((b.runs / b.ballsFaced) * 100).toFixed(2)) : 0,
             [`${statsKey}.batting.average`]: timesOutTotal > 0 ? Number((b.runs / timesOutTotal).toFixed(2)) : b.runs,
         };
@@ -622,6 +629,7 @@ async function applyTeamStats(match, team, statsKey) {
                 [`${statsKey}.bowling.ballsBowled`]: row.balls || 0,
                 [`${statsKey}.bowling.dots`]: row.dots || 0,
                 [`${statsKey}.bowling.noBalls`]: row.noBalls || 0,
+                [`${statsKey}.bowling.wideRuns`]: row.wideRuns || 0,
                 [`${statsKey}.bowling.runsConceded`]: row.runs || 0,
                 [`${statsKey}.bowling.maidens`]: row.maidens || 0,
                 [`${statsKey}.bowling.hatTricks`]: row.hatTrick ? 1 : 0,
@@ -694,6 +702,7 @@ async function reverseTeamStats(match, teamKey) {
         bowling.ballsBowled = Math.max(bowling.ballsBowled - (row.balls || 0), 0);
         bowling.dots = Math.max(bowling.dots - (row.dots || 0), 0);
         bowling.runsConceded = Math.max(bowling.runsConceded - (row.runs || 0), 0);
+        bowling.wideRuns = Math.max((bowling.wideRuns || 0) - (row.wideRuns || 0), 0);
         bowling.maidens = Math.max(bowling.maidens - (row.maidens || 0), 0);
         bowling.hatTricks = Math.max(bowling.hatTricks - (row.hatTrick ? 1 : 0), 0);
         bowling.overs = Math.max(bowling.overs - (row.overs || 0), 0);
@@ -733,11 +742,55 @@ async function awardMatchMVP(match) {
     }
     match.mvpAwarded = true;
 }
+// A batter was picked by mistake and replaced after he had already scored:
+// everything he did this innings moves to the replacement. Undo snapshots
+// and the commentary feed are updated too, so nothing points at the old name.
+function retargetBatterHistory(match, innings, fromId, fromName, toId, toName) {
+    for (const key of ["lastBallSnapshots", "redoBallSnapshots"]) {
+        (match[key] || []).forEach((snap) => {
+            if (snap && snap.innings === innings && snap.team) transferBatter(snap.team, fromId, toId);
+        });
+        match.markModified(key);
+    }
+    const escaped = String(fromName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const nameRe = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, "gu");
+    for (const event of match.ballEvents || []) {
+        if (event.innings !== innings) continue;
+        if (event.striker !== fromName && event.nonStriker !== fromName) continue;
+        if (event.striker === fromName) event.striker = toName;
+        if (event.nonStriker === fromName) event.nonStriker = toName;
+        if (typeof event.sentence === "string") event.sentence = event.sentence.replace(nameRe, toName);
+        if (event.payload && String(event.payload.newBatsmanId) === String(fromId)) event.payload.newBatsmanId = toId;
+        if (event.payload && String(event.payload.outPlayerId) === String(fromId)) event.payload.outPlayerId = toId;
+    }
+    match.markModified("ballEvents");
+}
+// A bowler was picked by mistake and replaced mid-over: his figures for this over
+// already moved to the new bowler (transferBowlerSpell). This updates the undo
+// snapshots and the commentary so nothing keeps pointing at the wrong bowler.
+function retargetBowlerHistory(match, innings, fromId, fromName, toId, toName) {
+    for (const key of ["lastBallSnapshots", "redoBallSnapshots"]) {
+        (match[key] || []).forEach((snap) => {
+            if (snap && snap.innings === innings && snap.team) transferBowlerSpell(snap.team, fromId, toId);
+        });
+        match.markModified(key);
+    }
+    const team = match[innings];
+    const overNumber = Math.floor((team.legalBalls || 0) / 6) + 1;
+    const escaped = String(fromName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const nameRe = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, "gu");
+    for (const event of match.ballEvents || []) {
+        if (event.innings !== innings || event.over !== overNumber || event.bowler !== fromName) continue;
+        event.bowler = toName;
+        if (typeof event.sentence === "string") event.sentence = event.sentence.replace(nameRe, toName);
+    }
+    match.markModified("ballEvents");
+}
 exports.setupInnings = async (req, res) => {
     try {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
-        const { innings, strikerId, nonStrikerId, bowlerId, keeperId } = req.body;
+        const { innings, strikerId, nonStrikerId, bowlerId, keeperId, wrongBowler } = req.body;
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
         const batterPicks = [
@@ -757,8 +810,11 @@ exports.setupInnings = async (req, res) => {
             const currentId = team[pick.field];
             if (currentId && String(currentId) !== String(pick.id)) {
                 const currentRow = findRow(team.batting, currentId);
-                if (!currentRow || currentRow.balls > 0 || currentRow.runs > 0) {
-                    return res.status(400).json({ error: "A batter can only be replaced while their score is 0 runs and 0 balls." });
+                if (!currentRow || currentRow.status !== "batting") {
+                    return res.status(400).json({ error: "Only a batter who is still batting can be replaced." });
+                }
+                if (team.statsAggregated) {
+                    return res.status(400).json({ error: "This innings is already finished and added to player profiles." });
                 }
             }
 
@@ -782,6 +838,7 @@ exports.setupInnings = async (req, res) => {
         if (batterChanges.length) {
             if (!match.ballEvents) match.ballEvents = [];
             for (const change of batterChanges) {
+                if (change.previous.balls > 0 || change.previous.runs > 0) continue; // history is rewritten instead
                 match.ballEvents.push({
                     kind: "batter_change",
                     innings,
@@ -799,6 +856,16 @@ exports.setupInnings = async (req, res) => {
             match.markModified("ballEvents");
         }
 
+        for (const change of batterChanges) {
+            const prev = change.previous;
+            if (!(prev.balls > 0 || prev.runs > 0)) continue;
+            const fromId = prev.id;
+            const fromName = prev.name;
+            if (!transferBatter(team, fromId, change.next.id)) {
+                return res.status(400).json({ error: "Could not move the batter's score to the new batter." });
+            }
+            retargetBatterHistory(match, innings, fromId, fromName, change.next.id, change.next.name);
+        }
         for (const currentId of currentBatterIds) {
             if (!nextBatterIds.includes(currentId)) {
                 const currentRow = findRow(team.batting, currentId);
@@ -817,7 +884,15 @@ exports.setupInnings = async (req, res) => {
                 stampBattingOrder(row, team);
             }
         }
-        if (bowlerId) {
+        if (bowlerId && wrongBowler) {
+            const fromId = team.currentBowlerId;
+            const fromName = playerName(team, fromId);
+            const toName = playerName(team, bowlerId);
+            if (team.statsAggregated || !transferBowlerSpell(team, fromId, bowlerId)) {
+                return res.status(400).json({ error: "The wrong bowler can only be fixed while the over is still running. Use Undo instead." });
+            }
+            retargetBowlerHistory(match, innings, fromId, fromName, bowlerId, toName);
+        } else if (bowlerId) {
             const previousBowlerId = team.currentBowlerId;
             if (team.overStarted && !team.currentOverBowlerId && previousBowlerId) {
                 team.currentOverBowlerId = previousBowlerId;

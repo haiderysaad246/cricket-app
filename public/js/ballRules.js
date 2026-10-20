@@ -15,6 +15,22 @@
         row.battingOrder = used.length ? Math.max(...used) + 1 : 1;
     }
 
+    function bowlerBase(team, row, over) {
+        return {
+            over,
+            bowlerId: String(row.id),
+            balls: row.balls || 0,
+            runs: row.runs || 0,
+            wickets: row.wickets || 0,
+            dots: row.dots || 0,
+            noBalls: row.noBalls || 0,
+            wideRuns: row.wideRuns || 0,
+            wicketStreak: row.wicketStreak || 0,
+            hatTrick: !!row.hatTrick,
+            outIds: (team.batting || []).filter((r) => r.status === "out" || r.status === "retired").map((r) => String(r.id)),
+        };
+    }
+
     function inningsComplete(match, innings) {
         const team = match[innings];
         if (!team) return false;
@@ -87,6 +103,14 @@
             maybeDeclareResult(match);
             return { ok: true };
         }
+        // Remember this bowler's figures before his first delivery of the over, so a
+        // "wrong bowler" fix can move only what he bowled in this over.
+        const overIndex = Math.floor((team.legalBalls || 0) / 6);
+        const spellBowler = findRow(team.bowling, team.currentBowlerId);
+        if (spellBowler && (!team.overBowlerBase || team.overBowlerBase.over !== overIndex
+                || String(team.overBowlerBase.bowlerId) !== String(spellBowler.id))) {
+            team.overBowlerBase = bowlerBase(team, spellBowler, overIndex);
+        }
         if (!team.overStarted) {
             team.currentOverBalls = [];
             team.currentOverRuns = 0;
@@ -153,6 +177,7 @@
             team.totalRuns += total;
             team.extraWides += total;
             bowler.runs += total;
+            bowler.wideRuns = (bowler.wideRuns || 0) + total;
             team.currentOverBalls.push(wideRuns ? `wd+${wideRuns}` : "wd");
             team.currentOverRuns += total;
             if (wideRuns % 2 === 1) rotateStrike(team);
@@ -201,6 +226,7 @@
                 const wideStumping = outType === "stumping" && !!body.isWide;
                 if (wideStumping) {
                     team.totalRuns += 1; team.extraWides += 1; bowler.runs += 1;
+                    bowler.wideRuns = (bowler.wideRuns || 0) + 1;
                     team.currentOverBalls.push("wd+W"); team.currentOverRuns += 1;
                 } else {
                     legal = true; striker.balls += 1; team.legalBalls += 1; bowler.balls += 1;
@@ -251,6 +277,65 @@
         maybeDeclareResult(match);
         return { ok: true };
     }
+
+    // Moves everything a batter did this innings (runs, balls, dots, 4s, 6s,
+    // batting order and crease spot) to another player who has not batted yet.
+    // Shared by the server and the browser so both stay identical.
+    function transferBatter(team, fromId, toId) {
+        const from = findRow(team.batting, fromId);
+        const to = findRow(team.batting, toId);
+        if (!from || !to || from.status !== "batting") return false;
+        if (to.status !== "yet_to_bat" || to.balls > 0 || to.runs > 0) return false;
+        ["runs", "balls", "dots", "fours", "sixes"].forEach((key) => {
+            to[key] = from[key] || 0;
+            from[key] = 0;
+        });
+        to.status = "batting";
+        to.battingOrder = from.battingOrder;
+        from.status = "yet_to_bat";
+        from.battingOrder = null;
+        if (String(team.strikerId) === String(fromId)) team.strikerId = toId;
+        else if (String(team.nonStrikerId) === String(fromId)) team.nonStrikerId = toId;
+        return true;
+    }
+    applyBall.transferBatter = transferBatter;
+
+    // "Wrong bowler" fix: everything the current bowler bowled in THIS over
+    // (runs, wickets, balls, dots, no balls, wide runs, hat-trick streak and the
+    // "b <bowler>" text of batters he dismissed) moves to the correct bowler.
+    // His earlier overs are untouched. Only works while the over is running.
+    function transferBowlerSpell(team, fromId, toId) {
+        const base = team.overBowlerBase;
+        const from = findRow(team.bowling, fromId);
+        const to = findRow(team.bowling, toId);
+        if (!team.overStarted || !base || !from || !to) return false;
+        if (String(fromId) === String(toId) || String(team.currentBowlerId) !== String(fromId)) return false;
+        if (base.over !== Math.floor((team.legalBalls || 0) / 6) || String(base.bowlerId) !== String(fromId)) return false;
+        const toBefore = bowlerBase(team, to, base.over);
+        const moved = {};
+        ["balls", "runs", "wickets", "dots", "noBalls", "wideRuns"].forEach((key) => {
+            moved[key] = (from[key] || 0) - (base[key] || 0);
+            from[key] = base[key] || 0;
+            to[key] = (to[key] || 0) + moved[key];
+        });
+        if (moved.balls > 0 || moved.wickets > 0) {
+            to.wicketStreak = from.wicketStreak || 0;
+            to.hatTrick = !!to.hatTrick || to.wicketStreak >= 3;
+            from.wicketStreak = base.wicketStreak || 0;
+            from.hatTrick = !!base.hatTrick;
+        }
+        const earlierOut = new Set(base.outIds || []);
+        (team.batting || []).forEach((row) => {
+            if (row.status === "out" && !earlierOut.has(String(row.id)) && typeof row.dismissalText === "string") {
+                row.dismissalText = row.dismissalText.split(` b ${from.name}`).join(` b ${to.name}`);
+            }
+        });
+        if (String(team.currentOverBowlerId) === String(fromId)) team.currentOverBowlerId = toId;
+        team.currentBowlerId = toId;
+        team.overBowlerBase = { ...toBefore, bowlerId: String(toId) };
+        return true;
+    }
+    applyBall.transferBowlerSpell = transferBowlerSpell;
 
     return applyBall;
 }));

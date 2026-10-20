@@ -9,7 +9,7 @@
         <div class="stat-item"><span class="stat-label">Average Dots / Over</span><span class="stat-value"><%= stats.batting.ballsFaced > 0 ? ((stats.batting.dots || 0) * 6 / stats.batting.ballsFaced).toFixed(2) : '0.00' %></span></div>
         <div class="stat-item"><span class="stat-label">Strike Rate</span><span class="stat-value"><%= stats.batting.strikeRate %></span></div>
         <div class="stat-item"><span class="stat-label">4s / 6s</span><span class="stat-value"><%= stats.batting.fours %> / <%= stats.batting.sixes %></span></div>
-        <div class="stat-item"><span class="stat-label">Highest</span><span class="stat-value"><%= stats.batting.highest %></span></div>
+        <div class="stat-item"><span class="stat-label">Highest</span><span class="stat-value"><%= stats.batting.highestBalls ? stats.batting.highest + ' (' + stats.batting.highestBalls + ' balls)' : stats.batting.highest %></span></div>
     </div>
 </div>
 

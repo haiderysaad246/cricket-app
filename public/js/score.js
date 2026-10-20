@@ -22,10 +22,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let unsentBalls = [];
     let ballFlushTimer = null;
     let pendingBalls = 0;
+    let pendingHistoryOps = 0; // undo/redo calls still on their way to the server
     let resyncTriggered = false;
     let storageChain = Promise.resolve();
     const activeBatchIds = new Set();
-    function isBusy() { return isRestoring || scoreBlocked || isSubmitting || pendingBalls > 0; }
+    function isBusy() { return isRestoring || scoreBlocked || isSubmitting || pendingBalls > 0 || pendingHistoryOps > 0; }
+    function isActionLocked() { return isRestoring || scoreBlocked || isSubmitting; }
+    function needsInternet(label) {
+        if (navigator.onLine && !uploadPaused && !scoreBlocked) return false;
+        showScoreNotice(`${label} needs an internet connection. Please reconnect and try again.`);
+        return true;
+    }
 
     function showScoreNotice(message) {
         let notice = document.querySelector('.score-resync-toast');
@@ -281,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (authoritativeMatch && !serverRejectedBatch) {
                 pendingBalls = Math.max(0, pendingBalls - batch.actions.length);
             }
-            if (!resyncTriggered && pendingBalls === 0 && authoritativeMatch && !serverRejectedBatch) {
+            if (!resyncTriggered && pendingBalls === 0 && pendingHistoryOps === 0 && authoritativeMatch && !serverRejectedBatch) {
                 preserveTeamLogos(authoritativeMatch, match);
                 match = authoritativeMatch;
                 window.MATCH = match;
@@ -300,6 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Applies a ball instantly and sends it in the background, in order.
     function queueBall(body) {
         if (isRestoring || scoreBlocked) return;
+        if (needsInternet('Scoring')) return;
         const fullBody = { innings: match.currentInnings, ...body, clientActionId: createActionId() };
         const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
         if (!beforeTeam.overStarted) {
@@ -560,12 +568,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const undoCount = historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots');
         scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
         scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
-        scorePadUndoBtn.disabled = isRestoring || scoreBlocked || uploadPaused || pendingBalls > 0 || isSubmitting;
+        scorePadUndoBtn.disabled = isRestoring || scoreBlocked || uploadPaused || isSubmitting;
 
         const redoCount = historyCount(match, 'redoBallSnapshotCount', 'redoBallSnapshots');
         scorePadRedoBtn.style.display = redoCount > 0 ? '' : 'none';
         scorePadRedoBtn.title = redoCount > 0 ? `Redo last ball (${redoCount} available)` : 'Redo last ball';
-        scorePadRedoBtn.disabled = isBusy();
+        scorePadRedoBtn.disabled = isRestoring || scoreBlocked || uploadPaused || isSubmitting;
     }
 
     function historyCount(matchState, countKey, snapshotsKey) {
@@ -774,9 +782,12 @@ function abortInput() {
     }
 
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (event) => {
-        if (!event.target.closest('[data-action="end-innings"]') || isBusy()) return;
+        if (!event.target.closest('[data-action="end-innings"]') || isActionLocked()) return;
+        if (needsInternet('Ending the innings')) return;
         if (!confirm('End this innings now with the current score? Use this only when there are no batsmen left to bring in.')) return;
         try {
+            flushBallQueue();
+            await requestChain;
             const data = await postJson(`/turfs/live/${matchId}/end-innings`, {
                 innings: match.currentInnings,
             });
@@ -881,6 +892,8 @@ function abortInput() {
         scorePadHeader.textContent = headerLabels[level] || 'Score Ball';
 scorePadBackBar.style.display = level === 'main' ? 'none' : 'flex';
 scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
+        scorePadGrid.classList.toggle('score-pad-grid-numbers', level === 'moreRuns');
+        scorePadGrid.classList.toggle('score-pad-grid-nb', level === 'noball');
         
 
         if (level === 'main') {
@@ -890,36 +903,29 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
             // "5, 7+" opens a small follow-up asking the exact run count
             // for anything above the standard buttons. ----
             scorePadGrid.innerHTML = `
-                <button type="button" class="score-pad-btn" data-run="dot">0</button>
-                <button type="button" class="score-pad-btn" data-run="one">1</button>
-                <button type="button" class="score-pad-btn" data-run="two">2</button>
-                <button type="button" class="score-pad-btn" data-run="three">3</button>
-                <button type="button" class="score-pad-btn" data-run="four">4 (Four)</button>
-                <button type="button" class="score-pad-btn" data-run="six">6 (Six)</button>
-                <button type="button" class="score-pad-btn" data-action="morerun">4+ (Running)</button>
-                <button type="button" class="score-pad-btn" data-run="one_nr">1 (No Rotation)</button>
-
-                <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="out">
-                    <i class="fa-solid fa-xmark"></i>
-                    <span>Out</span>
-                </button>
+                <button type="button" class="score-pad-btn" data-action="morerun">1,2,3 (Running)</button>
                 <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="wide">
                     <i class="fa-solid fa-arrows-left-right"></i>
                     <span>Wide</span>
                 </button>
-                <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="noball">
+                <button type="button" class="score-pad-btn" data-run="four">4 (Four)</button>
+                <button type="button" class="score-pad-btn" data-run="six">6 (Six)</button>
+                <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="out">
+                    <i class="fa-solid fa-xmark"></i>
+                    <span>Out</span>
+                </button>
+                <button type="button" class="score-pad-btn" data-run="one_nr">1 (No Rotation)</button>
+                <button type="button" class="score-pad-btn score-pad-btn-parent score-pad-btn-span2" data-parent="noball">
                     <i class="fa-solid fa-shoe-prints"></i>
                     <span>No Ball</span>
                 </button>
-                <button type="button" class="score-pad-btn score-pad-btn-parent" data-parent="runout">
-                    <i class="fa-solid fa-bolt"></i>
-                    <span>Run Out / Mankad</span>
-                </button>
             `;
         } else if (level === 'moreRuns') {
-            scorePadGrid.innerHTML = [4, 5, 6, 7, 8, 9, 10].map((n) => `
-                <button type="button" class="score-pad-btn" data-morerun="${n}">${n} runs</button>
-            `).join('');
+            const runTypes = ['dot', 'one', 'two', 'three'];
+            scorePadGrid.innerHTML = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => (n < 4
+                ? `<button type="button" class="score-pad-btn" data-run="${runTypes[n]}">${n}</button>`
+                : `<button type="button" class="score-pad-btn" data-morerun="${n}">${n}</button>`
+            )).join('');
         } else if (level === 'out') {
             scorePadGrid.innerHTML = `
                 <button type="button" class="score-pad-btn" data-dismissal="bowled">Bowled</button>
@@ -928,6 +934,8 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
                 <button type="button" class="score-pad-btn" data-dismissal="hitwicket">Hit Wicket</button>
                 <button type="button" class="score-pad-btn" data-dismissal="retired">Retired Out</button>
                 <button type="button" class="score-pad-btn" data-dismissal="obstructing">Obstructing the Field</button>
+                <button type="button" class="score-pad-btn" data-action="regularrunout">Run Out</button>
+                <button type="button" class="score-pad-btn" data-action="mankad">Mankad</button>
             `;
         } else if (level === 'stumped') {
             scorePadGrid.innerHTML = `
@@ -936,15 +944,14 @@ scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
             `;
         } else if (level === 'noball') {
             scorePadGrid.innerHTML = `
-                <button type="button" class="score-pad-btn" data-nb="dot">No Ball +0</button>
                 <button type="button" class="score-pad-btn" data-nb="one">No Ball +1</button>
+                <button type="button" class="score-pad-btn" data-nb="four">No Ball + Four</button>
                 <button type="button" class="score-pad-btn" data-nb="two">No Ball +2</button>
+                <button type="button" class="score-pad-btn" data-nb="six">No Ball + Six</button>
                 <button type="button" class="score-pad-btn" data-nb="three">No Ball +3</button>
+                <button type="button" class="score-pad-btn" data-action="nbrunout">No Ball + Run Out</button>
                 <button type="button" class="score-pad-btn" data-nb="four_run">No Ball +4</button>
                 <button type="button" class="score-pad-btn" data-nb="five">No Ball +5</button>
-                <button type="button" class="score-pad-btn" data-nb="four">No Ball + Four</button>
-                <button type="button" class="score-pad-btn" data-nb="six">No Ball + Six</button>
-                <button type="button" class="score-pad-btn" data-action="nbrunout">No Ball + Run Out</button>
             `;
         } else if (level === 'runoutRuns') {
             scorePadGrid.innerHTML = [0, 1, 2, 3, 4, 5].map((n) => `
@@ -1132,66 +1139,115 @@ scorePadCloseBtn.addEventListener('click', () => {
         return preview;
     }
 
-    // Wait until queued balls are confirmed before changing local history;
-    // otherwise an interrupted upload could leave undo ahead of the server.
-    async function doUndo() {
-        if (isRestoring || scoreBlocked || uploadPaused || pendingBalls > 0 || isSubmitting || !undoSnapshots.length) return;
-        isSubmitting = true;
-        updateUndoBtn();
-        try {
-            flushBallQueue();
-            await requestChain; // apply the undo after queued ball saves finish
-            if (uploadPaused || scoreBlocked || pendingBalls > 0) {
-                showScoreNotice('Undo is unavailable until the pending score is confirmed by the server.');
+    // Instant undo/redo: the screen updates on the click itself. The server
+    // call is queued on requestChain, so it always runs after pending balls
+    // and in click order, and rapid taps never get dropped.
+    function queueHistoryOp(kind) {
+        if (isRestoring || scoreBlocked || uploadPaused || isSubmitting) return;
+        if (!navigator.onLine) {
+            showScoreNotice('You are offline. Undo/redo works once the connection is back.');
+            return;
+        }
+        const preview = kind === 'undo' ? previewUndo() : previewRedo();
+        if (!preview) return;
+        flushBallQueue(); // make sure any unsent balls are queued before this op
+        pendingHistoryOps++;
+        handleMatchUpdate(preview, false, true);
+
+        requestChain = requestChain.then(async () => {
+            if (resyncTriggered) return;
+            if (uploadPaused || scoreBlocked) {
+                pendingHistoryOps = Math.max(0, pendingHistoryOps - 1);
+                resyncWithWarning(`${kind === 'undo' ? 'Undo' : 'Redo'} was not saved — showing the saved score.`);
                 return;
             }
-            const preview = previewUndo();
-            if (preview) handleMatchUpdate(preview, false, true);
-            const data = await postJson(`/turfs/live/${matchId}/undo`, {});
-            handleMatchUpdate(data.match, false, true);
-        } catch (err) {
-            if (uploadPaused || scoreBlocked || pendingBalls > 0) {
-                showScoreNotice('Undo is unavailable until the pending score is confirmed by the server.');
-            } else {
-                resyncWithWarning('Undo could not be confirmed — refreshing the saved match.');
-            }
-        } finally {
-            isSubmitting = false;
-            updateUndoBtn();
-        }
-    }
-    scorePadUndoBtn.addEventListener('click', doUndo);
-
-    async function doRedo() {
-        if (isBusy()) return;
-        isSubmitting = true;
-        updateUndoBtn();
-        try {
-            const preview = previewRedo();
-            if (preview) handleMatchUpdate(preview, false, true);
-            flushBallQueue();
-            await requestChain;
-            const data = await postJson(`/turfs/live/${matchId}/redo`, {});
-            handleMatchUpdate(data.match, false, true);
-        } catch (err) {
-            resyncWithWarning('Redo could not be confirmed — refreshing the saved match.');
-        } finally {
-            isSubmitting = false;
-            updateUndoBtn();
-        }
-    }
-    scorePadRedoBtn.addEventListener('click', doRedo);
-
-    // Tap the bowler's line to change the bowler, even mid-over.
-    document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
-        if (!e.target.closest('.live-bowler-col .live-player-line') || isBusy()) return;
-        const pool = team.bowling.filter((p) => String(p.id) !== String(team.currentBowlerId));
-        openCardPicker(pool, 'Change Bowler', async (id) => {
             try {
-                const data = await postJson(`/turfs/live/${matchId}/setup`, {
-                    innings: match.currentInnings,
-                    bowlerId: id,
+                const res = await fetch(`/turfs/live/${matchId}/${kind}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
                 });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'request_failed');
+                pendingHistoryOps = Math.max(0, pendingHistoryOps - 1);
+                // Only sync from the server once everything is settled.
+                if (pendingHistoryOps === 0 && pendingBalls === 0) {
+                    if (statesMatch(data.match, match)) {
+                        preserveTeamLogos(data.match, match);
+                        match = data.match;
+                        window.MATCH = match;
+                        team = match[match.currentInnings];
+                        updateUndoBtn();
+                    } else {
+                        handleMatchUpdate(data.match, false, true);
+                    }
+                }
+            } catch (err) {
+                pendingHistoryOps = Math.max(0, pendingHistoryOps - 1);
+                resyncWithWarning(`${kind === 'undo' ? 'Undo' : 'Redo'} could not be confirmed — refreshing the saved match.`);
+            }
+        });
+    }
+    scorePadUndoBtn.addEventListener('click', () => queueHistoryOp('undo'));
+    scorePadRedoBtn.addEventListener('click', () => queueHistoryOp('redo'));
+
+        // Asks what the bowler change is for. "Wrong bowler" is only offered while the
+    // over is still running and its starting figures are known.
+    function canFixWrongBowler() {
+        const base = team.overBowlerBase;
+        return !!(team.overStarted && !team.statsAggregated && base
+            && base.over === Math.floor((team.legalBalls || 0) / 6)
+            && String(base.bowlerId) === String(team.currentBowlerId));
+    }
+    function askBowlerChangeType(canFix) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
+            const btn = 'padding:14px 10px;border-radius:12px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:15px;cursor:pointer;touch-action:manipulation;';
+            overlay.innerHTML = `
+                <div style="background:#161616;border-radius:16px;padding:16px;width:100%;max-width:340px;display:grid;gap:10px;">
+                    <div style="color:#fff;font-weight:600;text-align:center;">Change bowler</div>
+                    <button type="button" data-choice="change" style="${btn}">1. Bowler change<br><small>New bowler continues this over</small></button>
+                    <button type="button" data-choice="wrong" style="${btn}${canFix ? '' : 'opacity:.4;'}" ${canFix ? '' : 'disabled'}>2. Wrong bowler<br><small>${canFix ? 'Move this over to the correct bowler' : 'Not possible now. Use Undo.'}</small></button>
+                    <button type="button" data-choice="cancel" style="${btn}">Cancel</button>
+                </div>`;
+            overlay.addEventListener('click', (ev) => {
+                const choice = ev.target.closest('[data-choice]')?.dataset.choice || (ev.target === overlay ? 'cancel' : null);
+                if (!choice) return;
+                overlay.remove();
+                resolve(choice);
+            });
+            document.body.appendChild(overlay);
+        });
+    }
+
+    document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (e) => {
+        if (!e.target.closest('.live-bowler-col .live-player-line') || isActionLocked()) return;
+        if (needsInternet('Changing the bowler')) return;
+        let wrong = false;
+        if (team.overStarted) {
+            const choice = await askBowlerChangeType(canFixWrongBowler());
+            if (choice !== 'change' && choice !== 'wrong') return;
+            wrong = choice === 'wrong';
+        }
+        const pool = team.bowling.filter((p) => String(p.id) !== String(team.currentBowlerId));
+        openCardPicker(pool, wrong ? 'Wrong Bowler: Pick Correct Bowler' : 'Change Bowler', async (id) => {
+            try {
+                flushBallQueue();
+                await requestChain;
+                const innings = match.currentInnings;
+                const fromId = team.currentBowlerId;
+                const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                    innings,
+                    bowlerId: id,
+                    wrongBowler: wrong,
+                });
+                if (wrong) {
+                    undoSnapshots.concat(redoSnapshots).forEach((snap) => {
+                        if (snap.innings === innings && snap.team) window.BallRules.applyBall.transferBowlerSpell(snap.team, fromId, id);
+                    });
+                }
+                redoSnapshots = []; // the server clears redo after a setup change
                 handleMatchUpdate(data.match);
             } catch (err) {
                 console.error(err);
@@ -1204,7 +1260,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         const id = team && team[role === 'striker' ? 'strikerId' : 'nonStrikerId'];
         if (!id) return true;
         const row = findRow(team.batting, id);
-        return !!row && (row.runs || 0) === 0 && (row.balls || 0) === 0;
+        return !!row && row.status === 'batting' && !team.statsAggregated;
     }
     function hasChangeableBatter() {
         return canChangeBatter('striker') || canChangeBatter('nonStriker');
@@ -1245,7 +1301,8 @@ scorePadCloseBtn.addEventListener('click', () => {
 
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
         const limitButton = e.target.closest('[data-wicket-limit]');
-        if (limitButton && !isBusy()) {
+        if (limitButton && !isActionLocked()) {
+            if (needsInternet('Setting the wicket limit')) return;
             const innings = limitButton.dataset.wicketLimit;
             const selectedTeam = match[innings];
             const maxLimit = match.isSuperOver ? 2 : Math.max(1, selectedTeam.batting.length - 1);
@@ -1274,7 +1331,10 @@ scorePadCloseBtn.addEventListener('click', () => {
             });
             return;
         }
-        if (e.target.closest('.live-batters-col') && hasChangeableBatter() && !isBusy()) openSetupForm();
+        if (e.target.closest('.live-batters-col') && hasChangeableBatter() && !isActionLocked()) {
+            if (needsInternet('Changing batters')) return;
+            openSetupForm();
+        }
     });
     document.querySelectorAll('#scoreSetupForm .role-pick-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1290,21 +1350,41 @@ scorePadCloseBtn.addEventListener('click', () => {
     });
     document.getElementById('scoreSetupForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (isBusy()) return;
+        if (isActionLocked() || needsInternet('Saving players')) return;
         if (!setupPicks.striker || !setupPicks.nonStriker || !setupPicks.bowler) {
             alert('Please select striker, non-striker and bowler.');
             return;
         }
+                // A batter who already scored is being replaced: his runs and balls move to the new batter.
+        const swaps = [];
+        [['striker', team.strikerId], ['nonStriker', team.nonStrikerId]].forEach(([role, oldId]) => {
+            const newId = setupPicks[role];
+            const row = oldId ? findRow(team.batting, oldId) : null;
+            if (row && String(oldId) !== String(newId) && ((row.runs || 0) > 0 || (row.balls || 0) > 0)) {
+                swaps.push({ fromId: oldId, toId: newId, row });
+            }
+        });
+        if (swaps.length && !confirm(swaps.map((s) => {
+            const to = findRow(team.batting, s.toId);
+            return `Move ${s.row.runs} (${s.row.balls}) from ${s.row.name} to ${to ? to.name : 'the new batter'}?`;
+        }).join('\n'))) return;
         isSubmitting = true;
         try {
             flushBallQueue();
             await requestChain;
+            const innings = match.currentInnings;
             const data = await postJson(`/turfs/live/${matchId}/setup`, {
-                innings: match.currentInnings,
+                innings,
                 strikerId: setupPicks.striker,
                 nonStrikerId: setupPicks.nonStriker,
                 bowlerId: setupPicks.bowler,
             });
+            swaps.forEach((s) => {
+                undoSnapshots.concat(redoSnapshots).forEach((snap) => {
+                    if (snap.innings === innings && snap.team) window.BallRules.applyBall.transferBatter(snap.team, s.fromId, s.toId);
+                });
+            });
+            redoSnapshots = []; // the server clears redo after a setup change
             scoreSetupOverlay.style.display = 'none';
             handleMatchUpdate(data.match);
         } catch (err) {
@@ -1349,6 +1429,8 @@ scorePadCloseBtn.addEventListener('click', () => {
         const pool = team.bowling;
         openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
             try {
+                flushBallQueue();
+                await requestChain;
                 const data = await postJson(`/turfs/live/${matchId}/setup`, {
                     innings: match.currentInnings,
                     bowlerId: id,

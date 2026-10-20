@@ -83,6 +83,7 @@
     justify-content: center;
     cursor: pointer;
     z-index: 2;
+    touch-action: manipulation;
 }
 .score-pad-redo-btn:hover { background-color: rgba(255, 255, 255, 0.08); }
 .score-pad-redo-btn:disabled { cursor: default; opacity: 0.5; }
@@ -987,4 +988,34 @@
     .live-bowler-col { text-align: left; align-items: flex-start; }
     .live-bowler-col .live-player-line,
     .live-over-balls { justify-content: flex-start; }
+}
+
+/* Compact score pad: 2 columns, narrower and taller (squarer) buttons */
+.score-page .score-page-input-box .score-pad-grid {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 360px;
+    margin: 0 auto;
+    gap: 10px;
+}
+.score-page .score-page-input-box .score-pad-grid .score-pad-btn {
+    min-height: 72px;
+    padding: 12px 8px;
+}
+.score-page .score-page-input-box .score-pad-grid .score-pad-btn-span2 {
+    grid-column: 1 / -1;
+}
+.score-page .score-page-input-box .score-pad-grid.score-pad-grid-numbers {
+    grid-template-columns: repeat(4, 1fr);
+}
+.score-page .score-page-input-box .score-pad-grid.score-pad-grid-numbers .score-pad-btn {
+    min-height: 64px;
+    font-size: 20px;
+}
+
+/* No Ball screen: column 1 = +0..+5, column 2 = Four / Six / Run Out */
+.score-page .score-page-input-box .score-pad-grid.score-pad-grid-nb {
+    grid-auto-flow: row;
+}
+.score-page .score-page-input-box .score-pad-grid.score-pad-grid-nb .score-pad-btn {
+    min-height: 56px;
 }

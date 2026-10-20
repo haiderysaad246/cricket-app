@@ -23,6 +23,7 @@ const bowlingRowSchema = new Schema({
     isCaptain: { type: Boolean, default: false },
     balls: { type: Number, default: 0 },
     noBalls: { type: Number, default: 0 },
+    wideRuns: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
     overs: { type: Number, default: 0 },
     maidens: { type: Number, default: 0 },
@@ -49,6 +50,7 @@ const teamStateSchema = new Schema({
     currentOverBalls: { type: [String], default: [] },
     currentOverRuns: { type: Number, default: 0 },
     overStarted: { type: Boolean, default: false },
+    overBowlerBase: { type: Schema.Types.Mixed, default: null }, // bowler's figures at the start of his spell in this over
     overSplit: { type: Boolean, default: false }, // bowler changed mid-over, so nobody gets a maiden for it
     totalRuns: { type: Number, default: 0 },
     wickets: { type: Number, default: 0 },

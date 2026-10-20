@@ -12,6 +12,7 @@ const zeroStatBlock = {
         average: 0,
         strikeRate: 0,
         highest: 0,
+        highestBalls: 0,
         ducks: 0,
         ballsFaced: 0,
         dots: 0,

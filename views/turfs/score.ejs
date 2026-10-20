@@ -3,14 +3,13 @@
 <head>
     <%- include('../includes/head.ejs', { title: 'Cricket | Score Ball' }) %>
 </head>
-<body class="score-body"></body>
+<body class="score-body">
     <div class="score-page">
         <div class="score-page-top">
             <a href="/turfs/live/<%= match._id %>" class="score-page-back-link">
                 <i class="fa-solid fa-arrow-left"></i>
                 <span>Back to Match</span>
             </a>
-            </button>
             <div id="liveScoreSummaryWrapper">
                 <%- include('./includes/live-score-summary.ejs', { match, showEndInningsButton: true }) %>
             </div>
@@ -49,7 +48,7 @@
             <i class="fa-solid fa-xmark"></i>
         </button>
         <h2 class="add-player-title">Set Players</h2>
-        <p class="score-setup-hint">A batter can only be replaced while their score is 0 runs and 0 balls.</p>
+        <p class="score-setup-hint">Changing a batter moves his runs and balls to the new batter. Not possible once he is out.</p>
         <form class="add-player-form" id="scoreSetupForm">
             <div class="form-group">
                 <label>Striker (on strike)</label>
