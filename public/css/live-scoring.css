@@ -990,11 +990,10 @@
     .live-over-balls { justify-content: flex-start; }
 }
 
-/* Compact score pad: 2 columns, narrower and taller (squarer) buttons */
+/* Score-pad buttons use the full width of the input panel. */
 .score-page .score-page-input-box .score-pad-grid {
     grid-template-columns: repeat(2, 1fr);
-    max-width: 360px;
-    margin: 0 auto;
+    width: 100%;
     gap: 10px;
 }
 .score-page .score-page-input-box .score-pad-grid .score-pad-btn {

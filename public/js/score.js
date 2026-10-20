@@ -567,13 +567,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateUndoBtn() {
+        const isMainLevel = currentLevel() === 'main';
         const undoCount = historyCount(match, 'lastBallSnapshotCount', 'lastBallSnapshots');
-        scorePadUndoBtn.style.display = undoCount > 0 ? '' : 'none';
+        scorePadUndoBtn.style.display = isMainLevel && undoCount > 0 ? '' : 'none';
         scorePadUndoBtn.title = undoCount > 0 ? `Undo last ball (${undoCount} left)` : 'Undo last ball';
         scorePadUndoBtn.disabled = isRestoring || scoreBlocked || uploadPaused || isSubmitting;
 
         const redoCount = historyCount(match, 'redoBallSnapshotCount', 'redoBallSnapshots');
-        scorePadRedoBtn.style.display = redoCount > 0 ? '' : 'none';
+        scorePadRedoBtn.style.display = isMainLevel && redoCount > 0 ? '' : 'none';
         scorePadRedoBtn.title = redoCount > 0 ? `Redo last ball (${redoCount} available)` : 'Redo last ball';
         scorePadRedoBtn.disabled = isRestoring || scoreBlocked || uploadPaused || isSubmitting;
     }
@@ -892,8 +893,9 @@ function abortInput() {
     function renderScorePad() {
         const level = currentLevel();
         scorePadHeader.textContent = headerLabels[level] || 'Score Ball';
-scorePadBackBar.style.display = level === 'main' ? 'none' : 'flex';
-scorePadCloseBtn.style.display = level === 'main' ? 'none' : 'flex';
+        scorePadBackBar.style.display = level === 'main' ? 'none' : 'flex';
+        scorePadCloseBtn.style.display = 'none';
+        updateUndoBtn();
         scorePadGrid.classList.toggle('score-pad-grid-numbers', level === 'moreRuns');
         scorePadGrid.classList.toggle('score-pad-grid-nb', level === 'noball');
         
