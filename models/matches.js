@@ -59,8 +59,8 @@ const teamStateSchema = new Schema({
     extraNoBalls: { type: Number, default: 0 },
     endedEarly: { type: Boolean, default: false },
     // Set once this team's batting+bowling has been folded into player
-    // profiles (right after their innings finishes). Prevents endTurf's
-    // fallback sweep from double-counting the same innings.
+    // profiles after the match finishes. Prevents endTurf's fallback
+    // sweep from double-counting the same innings.
     statsAggregated: { type: Boolean, default: false },
 }, { _id: false });
 

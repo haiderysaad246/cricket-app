@@ -419,13 +419,6 @@ exports.endMatch = async (req, res) => {
         // double-counted if the match already completed.
         const match = await Match.findById(req.params.id);
         if (match && match.status === "live") {
-            // Fold any innings that finished but hasn't been aggregated yet,
-            // then save whatever stats exist for the current (in-progress)
-            // innings too — so ending a half-played match still records the
-            // players' current batting/bowling numbers.
-            await aggregatePendingInningsStats(match);
-            await aggregateTeamStats(match, "team1");
-            await aggregateTeamStats(match, "team2");
             match.status = "completed";
             // An early/abandoned end with no decided result is simply marked
             // as no result — no winner is crowned.
@@ -433,6 +426,7 @@ exports.endMatch = async (req, res) => {
                 match.result = "No Result";
                 match.winnerKey = null;
             }
+            await aggregatePendingInningsStats(match);
             await awardMatchMVP(match);
             await match.save();
         }
@@ -571,13 +565,10 @@ function maybeDeclareResult(match) {
     // accepting further balls (recordBall/undo/etc. all require status "live").
     match.status = "completed";
 }
-// Folds ONE team's batting+bowling from this match into each player's
-// stat blocks, the moment that team's innings finishes — instead of
-// waiting for the whole match/turf to end. Guarded by statsAggregated so
-// calling it repeatedly (e.g. once per ball) after the innings is already
-// done is a harmless no-op.
-//
+// Folds ONE team's batting+bowling from a completed match into player
+// stat blocks. Guarded by statsAggregated so each innings is counted once.
 async function aggregateTeamStats(match, teamKey) {
+    if (!match || match.status !== "completed") return;
     const team = match[teamKey];
     if (!team || team.statsAggregated) return;
     await applyTeamStats(match, team, "turfStats");
@@ -643,15 +634,13 @@ async function applyTeamStats(match, team, statsKey) {
         } });
     }));
 }
-// Checks both teams and aggregates whichever one's innings has finished
-// but hasn't been folded in yet. Call after any mutation that could have
-// just completed an innings.
+// Aggregate both innings only after the match is complete. This is called
+// after scoring mutations, but an innings ending alone must not update turf
+// career stats.
 async function aggregatePendingInningsStats(match) {
-    const matchDone = match.status === "completed"; // chased-down innings never "completes" by overs/wickets
+    if (match.status !== "completed") return;
     for (const key of ["team1", "team2"]) {
-        if (matchDone || isInningsComplete(match, key)) {
-            await aggregateTeamStats(match, key);
-        }
+        await aggregateTeamStats(match, key);
     }
 }
 
@@ -1036,6 +1025,7 @@ exports.redoLastBall = async (req, res) => {
         }
         match.currentInnings = snap.currentInnings;
         maybeDeclareResult(match);
+        await aggregatePendingInningsStats(match);
         await awardMatchMVP(match);
         match.markModified(snap.innings);
         match.markModified("lastBallSnapshots");
@@ -1186,7 +1176,7 @@ exports.recordBalls = async (req, res) => {
         return res.status(500).json({ error: "ball_batch_failed" });
     }
 };
-// Rolls every match played in this turf into each player's turfStats,
+// Rolls every completed match played in this turf into each player's turfStats,
 // then wipes the (temporary) match documents. Averages/rates are
 // recomputed from the accumulated raw totals rather than stored
 // incrementally, EXCEPT batting average — the schema doesn't keep a raw

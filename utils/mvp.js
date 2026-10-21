@@ -134,6 +134,7 @@ function getMatchMVPs(match, ranked = computeMVP(match)) {
 function computeSessionMVP(matches) {
     const totals = new Map();
     for (const match of matches) {
+        if (match.status !== "completed") continue;
         const ranked = computeMVP(match);
         ranked.forEach((player) => {
             if (!totals.has(player.id)) {
@@ -147,12 +148,10 @@ function computeSessionMVP(matches) {
             }
             totals.get(player.id).totalPts += player.totalPts;
         });
-        if (match.status === "completed") {
-            getMatchMVPs(match, ranked).forEach((matchMvp) => {
-                const player = totals.get(matchMvp.id);
-                if (player) player.matchMvpCount += 1;
-            });
-        }
+        getMatchMVPs(match, ranked).forEach((matchMvp) => {
+            const player = totals.get(matchMvp.id);
+            if (player) player.matchMvpCount += 1;
+        });
     }
     return Array.from(totals.values())
         .filter((player) => player.matchMvpCount > 0)

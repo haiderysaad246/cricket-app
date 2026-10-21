@@ -39,6 +39,7 @@
     function aggregate() {
         const players = new Map();
         matches.forEach((match) => {
+            if (match.status !== 'completed') return;
             ['team1', 'team2'].forEach((key) => {
                 const team = match[key];
                 if (!team) return;
@@ -72,11 +73,9 @@
                         const p = bucket(players, mp.id, mp.name, mp.image);
                         p.mvpPts += mp.totalPts;
                     });
-                    if (match.status === 'completed') {
-                        window.CricketMVP.getMatchMVPs(match, ranked).forEach((matchMvp) => {
-                            bucket(players, matchMvp.id, matchMvp.name, matchMvp.image).matchMvpCount += 1;
-                        });
-                    }
+                    window.CricketMVP.getMatchMVPs(match, ranked).forEach((matchMvp) => {
+                        bucket(players, matchMvp.id, matchMvp.name, matchMvp.image).matchMvpCount += 1;
+                    });
                 } catch (e) { /* skip a malformed match rather than breaking the whole page */ }
             }
         });

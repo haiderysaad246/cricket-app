@@ -924,7 +924,7 @@ function abortInput() {
         if (body.noballBoundary === 'four') return 'No Ball + Four';
         if (body.noballBoundary === 'six') return 'No Ball + Six';
         const runs = Number(body.noballRuns || 0);
-        return runs ? `No Ball + ${runs} Run${runs === 1 ? '' : 's'}` : 'No Ball';
+        return `No Ball + ${runs} Run${runs === 1 ? '' : 's'}`;
     }
 
     function renderPendingScoring() {
@@ -1241,6 +1241,7 @@ function abortInput() {
             `;
         } else if (level === 'noball') {
             scorePadGrid.innerHTML = `
+                <button type="button" class="score-pad-btn" data-nb="dot">No Ball +0</button>
                 <button type="button" class="score-pad-btn" data-nb="one">No Ball +1</button>
                 <button type="button" class="score-pad-btn" data-nb="four">No Ball + Four</button>
                 <button type="button" class="score-pad-btn" data-nb="two">No Ball +2</button>

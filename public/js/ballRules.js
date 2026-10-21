@@ -267,7 +267,7 @@
         if (legal && team.legalBalls % 6 === 0) {
             if (team.currentOverRuns === 0 && !team.overSplit) bowler.maidens += 1;
             const overBowler = findRow(team.bowling, team.currentOverBowlerId);
-            if (overBowler) overBowler.overs = (overBowler.overs || 0) + 1;
+            if (overBowler && !team.overSplit) overBowler.overs = (overBowler.overs || 0) + 1;
             team.overStarted = false;
             team.overSplit = false;
             team.currentOverBowlerId = null;
