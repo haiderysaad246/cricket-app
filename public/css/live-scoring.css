@@ -360,6 +360,29 @@
     outline-offset: 2px;
 }
 
+.live-rotate-strike-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-top: 6px;
+    border: 1px solid var(--border-soft);
+    border-radius: 50%;
+    background: var(--color-surface-3);
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.live-rotate-strike-btn:hover {
+    background: var(--color-surface-5);
+}
+
+.live-rotate-strike-btn:focus-visible {
+    outline: 2px solid var(--color-accent-green);
+    outline-offset: 2px;
+}
+
 .live-summary-footer {
     display: flex;
     align-items: center;
@@ -1046,7 +1069,13 @@
     border-radius: 50%;
     object-fit: cover;
 }
-.pending-runout-player span {
+.pending-runout-player-summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+.pending-runout-player-summary span {
     max-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1149,7 +1178,7 @@
     .pending-runout-details { gap: 6px; }
     .pending-runout-title { font-size: 12px; }
     .pending-runout-player img { width: 32px; height: 32px; }
-    .pending-runout-player span { max-width: 62px; font-size: 10px; }
+    .pending-runout-player-summary span { max-width: 90px; font-size: 10px; }
     .pending-runout-runs { padding: 6px; font-size: 11px; }
     .pending-runout-actions { gap: 4px; }
     .pending-runout-actions button { width: 32px; height: 32px; }

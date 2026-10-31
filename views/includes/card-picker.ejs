@@ -12,7 +12,12 @@
                 <i class="fa-solid fa-xmark"></i>
             </button>
         <% } %>
-        <h2 class="add-player-title" id="cardPickerTitle">Select Player</h2>
+        <div class="picker-title-row">
+            <h2 class="add-player-title" id="cardPickerTitle">Select Player</h2>
+            <button type="button" class="picker-add-substitute" id="cardPickerAddSubstitute" aria-label="Select a substitute player" title="Select a substitute player" hidden>
+                <i class="fa-solid fa-plus"></i>
+            </button>
+        </div>
         <div class="players-grid picker-grid" id="cardPickerGrid"></div>
         <div class="form-actions">
             <button type="button" class="toolbar-btn" id="cancelCardPicker">Cancel</button>
@@ -23,4 +28,3 @@
         </div>
     </div>
 </div>
-

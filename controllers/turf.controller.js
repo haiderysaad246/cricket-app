@@ -62,6 +62,19 @@ function matchForBallResponse(match) {
     delete json.processedBallActionIds;
     return json;
 }
+async function getMatchSubstitutes(match) {
+    const playingIds = new Set();
+    ["team1", "team2"].forEach((key) => {
+        [...(match[key].batting || []), ...(match[key].bowling || [])]
+            .forEach((row) => playingIds.add(String(row.id)));
+    });
+    const players = await Player.find({ _id: { $nin: [...playingIds] } });
+    return players.map((player) => ({
+        id: String(player._id),
+        name: player.name,
+        image: player.image,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+}
 function clearRedoSnapshots(match) {
     match.redoBallSnapshots = [];
     match.markModified("redoBallSnapshots");
@@ -373,7 +386,8 @@ exports.showLive = async (req, res) => {
             }
         }
         if (wantsJson) return res.json({ match, chain });
-        res.render("turfs/live.ejs", { match, chain });
+        const substitutePlayers = match.turfId ? await getMatchSubstitutes(match) : [];
+        res.render("turfs/live.ejs", { match, chain, substitutePlayers });
     } catch (err) {
         console.log(err);
         respond(req, res, { json: { error: "match_not_found" }, redirect: "/turfs?error=match_not_found" });
@@ -404,7 +418,8 @@ exports.showScorePad = async (req, res) => {
             return respond(req, res, { json: { error: "innings_not_set_up", matchId: match._id }, redirect: "/turfs/live/" + match._id });
         }
         if (wantsJson) return res.json({ match });
-        res.render("turfs/score.ejs", { match });
+        const substitutePlayers = match.turfId ? await getMatchSubstitutes(match) : [];
+        res.render("turfs/score.ejs", { match, substitutePlayers });
     } catch (err) {
         console.log(err);
         respond(req, res, { json: { error: "match_not_found" }, redirect: "/turfs/live/" + req.params.id });
@@ -856,6 +871,11 @@ exports.setupInnings = async (req, res) => {
             if (!nextBatterIds.includes(currentId)) {
                 const currentRow = findRow(team.batting, currentId);
                 if (currentRow && currentRow.status === "batting") {
+                    // The replacement takes over the crease spot (batting order) of the batter he replaces.
+                    const change = batterChanges.find((c) => c.previous === currentRow);
+                    if (change && change.next.status === "yet_to_bat" && change.next.battingOrder == null) {
+                        change.next.battingOrder = currentRow.battingOrder;
+                    }
                     currentRow.status = "yet_to_bat";
                     currentRow.battingOrder = null;
                 }
@@ -868,6 +888,16 @@ exports.setupInnings = async (req, res) => {
             if (row && row.status === "yet_to_bat") {
                 row.status = "batting";
                 stampBattingOrder(row, team);
+            }
+        }
+        if (bowlerId) {
+            const selectedBowler = findRow(team.bowling, bowlerId);
+            if (!selectedBowler) {
+                return res.status(400).json({ error: "Select a bowler from the fielding team." });
+            }
+            if (!wrongBowler && String(bowlerId) !== String(team.currentBowlerId)
+                && (selectedBowler.balls || 0) >= 6 && req.body.repeatBowler !== true) {
+                return res.status(400).json({ error: "This bowler has already bowled an over. Select them from the substitute players list to bowl again." });
             }
         }
         if (bowlerId && wrongBowler) {
@@ -919,6 +949,74 @@ exports.setupInnings = async (req, res) => {
     } catch (err) {
         console.log(err);
         res.status(400).json({ error: "setup_failed" });
+    }
+};
+exports.addSubstitute = async (req, res) => {
+    try {
+        const match = await Match.findOne({ _id: req.params.id, status: "live" });
+        if (!match || !match.turfId) return res.status(404).json({ error: "match_not_found" });
+        const { playerId, side } = req.body;
+        if (!playerId || !["batting", "bowling"].includes(side)) {
+            return res.status(400).json({ error: "invalid_substitute" });
+        }
+        const alreadyPlaying = ["team1", "team2"].some((key) =>
+            [...(match[key].batting || []), ...(match[key].bowling || [])]
+                .some((row) => String(row.id) === String(playerId)));
+        if (alreadyPlaying) return res.status(409).json({ error: "player_already_in_match" });
+
+        const player = await Player.findById(playerId);
+        if (!player) return res.status(404).json({ error: "player_not_found" });
+        const battingKey = side === "batting" ? match.currentInnings
+            : (match.currentInnings === "team1" ? "team2" : "team1");
+        const bowlingKey = battingKey === "team1" ? "team2" : "team1";
+        const battingRow = {
+            id: player._id,
+            name: player.name,
+            image: player.image,
+            isCaptain: false,
+            runs: 0,
+            balls: 0,
+            dots: 0,
+            fours: 0,
+            sixes: 0,
+            status: "yet_to_bat",
+            dismissalText: null,
+            battingOrder: null,
+        };
+        const bowlingRow = {
+            id: player._id,
+            name: player.name,
+            image: player.image,
+            isCaptain: false,
+            balls: 0,
+            noBalls: 0,
+            wideRuns: 0,
+            dots: 0,
+            overs: 0,
+            maidens: 0,
+            runs: 0,
+            wickets: 0,
+            wicketStreak: 0,
+            hatTrick: false,
+        };
+        match[battingKey].batting.push(battingRow);
+        match[bowlingKey].bowling.push(bowlingRow);
+
+        for (const key of ["lastBallSnapshots", "redoBallSnapshots"]) {
+            (match[key] || []).forEach((snapshot) => {
+                if (!snapshot || !snapshot.team) return;
+                if (snapshot.innings === battingKey) snapshot.team.batting.push({ ...battingRow });
+                if (snapshot.innings === bowlingKey) snapshot.team.bowling.push({ ...bowlingRow });
+            });
+            match.markModified(key);
+        }
+        match.markModified(battingKey);
+        match.markModified(bowlingKey);
+        await match.save();
+        res.json({ ok: true, match });
+    } catch (err) {
+        console.log(err);
+        res.status(400).json({ error: "substitute_add_failed" });
     }
 };
 exports.switchInnings = async (req, res) => {

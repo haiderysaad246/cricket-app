@@ -22,6 +22,7 @@ Player profiles preserve cumulative Turf statistics, including TCL performances.
 - 👤 **Player management:** profiles, images, roles, handedness, and career statistics.
 - 🛡️ **Team management:** team rosters, logos, captain selection, and a player picker that promotes search matches without hiding the full player list.
 - 🏏 **Turf sessions:** create sessions, configure teams and overs, and manage multiple matches.
+- 🔄 **Match-only substitutes:** add players from outside the two playing squads without changing the saved Turf rosters; their match statistics are recorded under their own player profiles. Bowlers who have completed an over require an explicit selection from the substitute/repeat list to bowl again.
 - 🏆 **TCL tournaments:** create tournament folders, schedule fixtures, track match stages, and display tournament information.
 - ⚡ **Live scoring:** record Turf-format runs, boundaries, wides, no-balls, wickets, run-outs, retirements, and other supported scoring events.
 - ⚡ **Optimistic scoring UI:** score updates render immediately, while persistence requests are processed in order.

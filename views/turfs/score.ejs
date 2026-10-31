@@ -64,12 +64,6 @@
                 </button>
                 <div class="role-picked-chip" id="spNonStriker"></div>
             </div>
-            <div class="form-group">
-                <button type="button" class="toolbar-btn" id="rotateStrikeBtn">
-                    <i class="fa-solid fa-rotate"></i>
-                    <span>Rotate Strike</span>
-                </button>
-            </div>
             <div class="form-group" id="spBowlerGroup">
                 <label>Bowler</label>
                 <button type="button" class="toolbar-btn role-pick-btn" data-role="bowler">
@@ -93,6 +87,7 @@
 
     <script>
         window.MATCH = <%- JSON.stringify(match) %>;
+        window.SUBSTITUTE_PLAYERS = <%- JSON.stringify(typeof substitutePlayers !== 'undefined' ? substitutePlayers : []) %>;
     </script>
     <%- include('../includes/scripts.ejs') %>
     <script src="/js/ballRules.js"></script>

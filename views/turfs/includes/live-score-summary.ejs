@@ -120,10 +120,11 @@
                     </select>
                 </div>
             <% } %>
-            <% if (liveTarget !== null) { %>
+            <% if (typeof showEndInningsButton !== 'undefined' && showEndInningsButton && match.status === 'live') { %>
                 <div class="live-footer-item">
-                    <span class="live-footer-label">Target</span>
-                    <span class="live-footer-value"><%= liveTarget %></span>
+                    <button type="button" class="live-rotate-strike-btn" data-action="rotate-strike" title="Rotate strike" aria-label="Rotate strike">
+                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                    </button>
                 </div>
             <% } %>
             <div class="live-footer-item">

@@ -51,6 +51,28 @@
 .turf-form-modal .add-player-title,
 .picker-modal .add-player-title { text-align: center; }
 
+.picker-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+.picker-title-row .add-player-title { margin: 0; }
+.picker-add-substitute {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-accent-green);
+    color: #fff;
+    cursor: pointer;
+}
+.picker-add-substitute[hidden] { display: none; }
+
 /* --- Turf team form blocks --- */
 .turf-team-form-block {
     border-top: 1px solid var(--border-softer);
@@ -231,6 +253,41 @@
 
 .ig-picker-item.ig-picker-selected .ig-picker-avatar-ring { border-color: var(--color-accent-green); }
 .ig-picker-item.ig-picker-selected .ig-picker-check { display: flex; }
+
+
+/* --- Run Out form: both questions in one picker -------------------------
+   The form grows to fit every player; it only scrolls (as a whole) when
+   the list is longer than the screen. */
+.picker-modal.runout-picker-modal { max-height: 96vh; }
+.picker-modal .runout-picker-grid {
+    display: block;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+}
+.runout-picker-heading {
+    color: var(--color-text);
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    margin: 4px 0 10px;
+}
+.runout-picker-players {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 10px 8px;
+}
+.runout-picker-players-batters {
+    grid-template-columns: repeat(2, minmax(0, 110px));
+    justify-content: center;
+}
+.runout-picker-divider {
+    height: 1px;
+    background: var(--border-softer);
+    margin: 14px 0;
+}
+.runout-picker-players .ig-picker-item { padding: 8px 4px 10px; }
+.runout-picker-players .ig-picker-avatar-ring { width: 56px; height: 56px; }
 
 /* ============================================================
    Score-pad modal buttons (undo/close) + header/backbar/grid
@@ -421,6 +478,20 @@
     .picker-modal .ig-picker-name {
         font-size: 12px;
         line-height: 1.2;
+    }
+
+    .picker-modal .runout-picker-players {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .picker-modal .runout-picker-players-batters {
+        grid-template-columns: repeat(2, minmax(0, 110px));
+    }
+
+    .picker-modal .runout-picker-players .ig-picker-avatar-ring {
+        width: 44px;
+        height: 44px;
     }
 
     .confirm-actions {

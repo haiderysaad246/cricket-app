@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!match) return; // not on the score page
     const matchId = match._id;
     let team = match[match.currentInnings];
+    let substitutePlayers = Array.isArray(window.SUBSTITUTE_PLAYERS) ? window.SUBSTITUTE_PLAYERS : [];
     let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
     let undoSnapshots = JSON.parse(JSON.stringify(match.lastBallSnapshots || []));
     let redoSnapshots = JSON.parse(JSON.stringify(match.redoBallSnapshots || []));
@@ -13,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let persistenceWarningShown = false;
     let pendingRunout = null;
     let pendingScoring = null;
+    let bowlerPromptOpen = false; // "Select Next Over's Bowler" is waiting for an answer
+    let heldBall = null;          // ball tapped while that prompt was open
 
     // ---- Optimistic scoring queue -----------------------------------
     // Ball taps apply instantly in the browser using the exact same rules
@@ -353,6 +356,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (needsInternet('Scoring')) return;
         if (!commitPendingScoring()) return;
+        if (bowlerPromptOpen) {
+            // The pending entry just finished the over: this ball belongs to
+            // the next bowler, so apply it only after he is chosen.
+            heldBall = body;
+            return;
+        }
         const fullBody = { innings: match.currentInnings, ...body, clientActionId: createActionId() };
         const beforeTeam = JSON.parse(JSON.stringify(match[match.currentInnings]));
         if (!beforeTeam.overStarted) {
@@ -523,10 +532,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${targetNeededHtml}
 
                 <div class="live-summary-footer">
-                    ${liveTarget !== null ? `
+                    ${m.status === 'live' ? `
                         <div class="live-footer-item">
-                            <span class="live-footer-label">Target</span>
-                            <span class="live-footer-value">${liveTarget}</span>
+                            <button type="button" class="live-rotate-strike-btn" data-action="rotate-strike" title="Rotate strike" aria-label="Rotate strike">
+                                <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                            </button>
                         </div>
                     ` : ''}
                     <div class="live-footer-item">
@@ -669,6 +679,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function findRow(list, id) {
         return (list || []).find((p) => String(p.id) === String(id));
     }
+    function hasBowledAnOver(player) {
+        return (Number(player.balls) || 0) >= 6;
+    }
+    function availableBowlers() {
+        return team.bowling.filter((player) => !hasBowledAnOver(player));
+    }
+    function usedOverBowlers(includeCurrent = false) {
+        return team.bowling.filter((player) =>
+            hasBowledAnOver(player) && (includeCurrent || String(player.id) !== String(team.currentBowlerId)));
+    }
 
     // Every leaf tap submits immediately — no separate Done step. This is
     // used directly for runs/dot/wide/no-ball (the branches with no
@@ -693,12 +713,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const cardPickerTitle = document.getElementById('cardPickerTitle');
     let cardPickerSelectedId = null;
     let cardPickerCallback = null;
+    let cardPickerRunout = null; // { outId, fielderId } while the combined Run Out form is open
+    let cardPickerOptions = {};
+    let cardPickerRepeatBowlerIds = new Set();
+    const cardPickerAddSubstitute = document.getElementById('cardPickerAddSubstitute');
+    const cardPickerModal = cardPickerOverlay.querySelector('.picker-modal');
 
-    function openCardPicker(players, title, callback) {
+    function openCardPicker(players, title, callback, options = {}) {
         cardPickerTitle.textContent = title;
         cardPickerSelectedId = null;
+        cardPickerRunout = null;
         cardPickerCallback = callback;
+        cardPickerOptions = options;
+        cardPickerRepeatBowlerIds = new Set((options.repeatBowlerIds || []).map(String));
+        cardPickerAddSubstitute.hidden = !options.substituteSide
+            || (!substitutePlayers.length && !(options.substituteOptions || []).length);
 
+        cardPickerGrid.classList.remove('runout-picker-grid');
+        cardPickerModal.classList.remove('runout-picker-modal');
         cardPickerGrid.classList.add('ig-picker-grid');
         cardPickerGrid.innerHTML = Array.from({ length: Math.ceil(players.length / 10) }, (_, pageIndex) => `
             <div class="ig-picker-page">
@@ -725,6 +757,56 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerOverlay.style.display = 'flex';
     }
 
+    cardPickerAddSubstitute.addEventListener('click', () => {
+        if (!cardPickerOptions.substituteSide) return;
+        const parentCallback = cardPickerCallback;
+        const runoutSelection = cardPickerRunout ? { ...cardPickerRunout } : null;
+        const { substituteSide, substituteOptions = [] } = cardPickerOptions;
+        const choices = [...substitutePlayers, ...substituteOptions];
+        const repeatBowlerIds = substituteOptions.map((player) => String(player.id));
+        openCardPicker(choices, 'Substitute Players / Used Bowlers', async (id, selection = {}) => {
+            const alreadyInMatch = ['team1', 'team2'].some((key) =>
+                [...(match[key].batting || []), ...(match[key].bowling || [])]
+                    .some((player) => String(player.id) === String(id)));
+            if (alreadyInMatch) {
+                if (parentCallback) parentCallback(id, selection);
+                return;
+            }
+            if (needsInternet('Adding a substitute')) return;
+            isSubmitting = true;
+            try {
+                flushBallQueue();
+                await requestChain;
+                const data = await postJson(`/turfs/live/${matchId}/substitute`, {
+                    playerId: id,
+                    side: substituteSide,
+                });
+                preserveTeamLogos(data.match, match);
+                match = data.match;
+                window.MATCH = match;
+                team = match[match.currentInnings];
+                undoSnapshots = JSON.parse(JSON.stringify(match.lastBallSnapshots || []));
+                redoSnapshots = JSON.parse(JSON.stringify(match.redoBallSnapshots || []));
+                substitutePlayers = substitutePlayers.filter((player) => String(player.id) !== String(id));
+                const wrapper = document.getElementById('liveScoreSummaryWrapper');
+                if (wrapper) wrapper.innerHTML = renderLiveScoreSummary(match);
+                updateUndoBtn();
+                updateEditablePlayers();
+                await persistLocalState();
+                isSubmitting = false;
+                if (runoutSelection) {
+                    openRunoutPicker(parentCallback, { outId: runoutSelection.outId, fielderId: id });
+                } else if (parentCallback) {
+                    parentCallback(id, selection);
+                }
+            } catch (err) {
+                window.alert(err.message || 'Could not add substitute player.');
+            } finally {
+                isSubmitting = false;
+            }
+        }, { repeatBowlerIds });
+    });
+
     // Cancelling a picker just closes the modal and drops back onto
     // whichever score-pad screen was showing underneath it — it does NOT
     // jump all the way back to the main menu, since the picker was opened
@@ -738,6 +820,22 @@ cardPickerCloseBtn.addEventListener('click', () => {
 });
 
     document.getElementById('confirmCardPicker').addEventListener('click', () => {
+        if (cardPickerRunout) {
+            // Combined Run Out form: both answers are needed.
+            if (!cardPickerRunout.outId || !cardPickerRunout.fielderId) {
+                alert(cardPickerRunout.outId
+                    ? 'Please select who ran out the batter.'
+                    : 'Please select who got run out.');
+                return;
+            }
+            const picked = cardPickerRunout;
+            cardPickerRunout = null;
+            cardPickerOverlay.style.display = 'none';
+            const runoutCb = cardPickerCallback;
+            cardPickerCallback = null;
+            if (runoutCb) runoutCb(picked.outId, picked.fielderId);
+            return;
+        }
         if (!cardPickerSelectedId) {
             alert('Please select a player.');
             return;
@@ -745,7 +843,9 @@ cardPickerCloseBtn.addEventListener('click', () => {
         cardPickerOverlay.style.display = 'none';
         const cb = cardPickerCallback;
         cardPickerCallback = null;
-        if (cb) cb(cardPickerSelectedId);
+        if (cb) cb(cardPickerSelectedId, {
+            repeatBowler: cardPickerRepeatBowlerIds.has(String(cardPickerSelectedId)),
+        });
     });
 
     const headerLabels = {
@@ -770,7 +870,35 @@ cardPickerCloseBtn.addEventListener('click', () => {
         return navStack[navStack.length - 1];
     }
 
+    let editingPendingNoBall = false;
+    let editingPendingRunoutRuns = false;
+
+    // Commits the previous pending entry right before a NEW input is staged.
+    function commitBeforeStaging() {
+        if (!pendingRunout && !pendingScoring) return true;
+        // Saving the old entry re-renders the pad and clears the picker
+        // answers (fielder, new batter...). Keep them for the new input.
+        const kept = { outType, outPlayerId, fielderId, newBatsmanId, runoutRuns, isNoBallRunout, isWideStumping };
+        if (!commitPendingScoring()) {
+            navStack = ['main'];
+            resetOutState();
+            renderScorePad();
+            return false;
+        }
+        ({ outType, outPlayerId, fielderId, newBatsmanId, runoutRuns, isNoBallRunout, isWideStumping } = kept);
+        return true;
+    }
+
+    // New batter already chosen for the pending entry must not be offered again.
+    function pendingNewBatsmanId() {
+        const id = pendingRunout ? pendingRunout.newBatsmanId
+            : (pendingScoring && pendingScoring.body ? pendingScoring.body.newBatsmanId : null);
+        return id ? String(id) : null;
+    }
+
     function pushLevel(level) {
+        editingPendingNoBall = false;
+        editingPendingRunoutRuns = false;
         navStack.push(level);
         renderScorePad();
     }
@@ -805,6 +933,7 @@ cardPickerCloseBtn.addEventListener('click', () => {
 function abortInput() {
     cardPickerOverlay.style.display = 'none';
     cardPickerCallback = null;
+    cardPickerRunout = null;
     navStack = ['main'];
     resetOutState();
     renderScorePad();
@@ -814,7 +943,7 @@ function abortInput() {
         openCardPicker(team.bowling, 'Who Caught It?', (id) => {
             fielderId = id;
             callback();
-        });
+        }, { substituteSide: 'bowling' });
     }
 
     function pickStumper(callback) {
@@ -822,7 +951,7 @@ function abortInput() {
         openCardPicker(pool, 'Who Stumped It?', (id) => {
             fielderId = id;
             callback();
-        });
+        }, { substituteSide: 'bowling' });
     }
 
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (event) => {
@@ -841,14 +970,106 @@ function abortInput() {
         }
     });
 
-    function pickOutPlayer(callback) {
-        const strikerRow = findRow(team.batting, team.strikerId);
-        const nonStrikerRow = findRow(team.batting, team.nonStrikerId);
-        const pool = [strikerRow, nonStrikerRow].filter(Boolean);
-        openCardPicker(pool, 'Who Got Run Out?', (id) => {
-            outPlayerId = id;
-            callback();
+    // Rotate Strike icon (where Target used to be): swaps striker and
+    // non-striker right away, for when the strike was entered wrong.
+    document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (event) => {
+        if (!event.target.closest('[data-action="rotate-strike"]') || isActionLocked()) return;
+        if (pendingRunout || pendingScoring) {
+            showScoreNotice('Confirm or discard the pending input before rotating the strike.');
+            return;
+        }
+        if (needsInternet('Rotating the strike')) return;
+        isSubmitting = true;
+        try {
+            flushBallQueue();
+            await requestChain;
+            const current = match[match.currentInnings];
+            if (!current.strikerId || !current.nonStrikerId) {
+                showScoreNotice('Set both batters before rotating the strike.');
+                return;
+            }
+            const data = await postJson(`/turfs/live/${matchId}/setup`, {
+                innings: match.currentInnings,
+                strikerId: current.nonStrikerId,
+                nonStrikerId: current.strikerId,
+            });
+            redoSnapshots = []; // the server clears redo after a setup change
+            handleMatchUpdate(data.match);
+        } catch (err) {
+            console.error('rotate_strike_failed', err);
+        } finally {
+            isSubmitting = false;
+        }
+    });
+
+    // The two batters at the crease, as they will be once a pending
+    // dismissal (if any) has been saved.
+    function runoutBatterPool() {
+        let crease = [team.strikerId, team.nonStrikerId];
+        if (pendingRunout && pendingRunout.newBatsmanId) {
+            crease = crease.map((id) => String(id) === String(pendingRunout.outPlayerId) ? pendingRunout.newBatsmanId : id);
+        } else if (pendingScoring && pendingScoring.body && pendingScoring.body.newBatsmanId) {
+            crease = crease.map((id) => String(id) === String(pendingScoring.body.outPlayerId) ? pendingScoring.body.newBatsmanId : id);
+        }
+                return crease.map((id) => findRow(team.batting, id)).filter(Boolean);
+    }
+
+    // Run Out: ONE form with both questions. Top: who got run out (the two
+    // batters). Below it: who ran out the batter (whole fielding team).
+    function openRunoutPicker(callback, initialSelection = null) {
+        cardPickerOptions = { substituteSide: 'bowling' };
+        cardPickerAddSubstitute.hidden = !substitutePlayers.length;
+        const pickerItem = (p, selectedId) => `
+            <div class="ig-picker-item${String(p.id) === selectedId ? ' ig-picker-selected' : ''}" data-id="${p.id}">
+                <div class="ig-picker-avatar-ring">
+                    <img src="${p.image}" alt="${p.name}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                    <span class="ig-picker-check"><i class="fa-solid fa-check"></i></span>
+                </div>
+                <span class="ig-picker-name">${p.name}</span>
+            </div>
+        `;
+        cardPickerTitle.textContent = 'Run Out';
+        cardPickerSelectedId = null;
+        cardPickerRunout = {
+            outId: initialSelection ? String(initialSelection.outId) : null,
+            fielderId: initialSelection ? String(initialSelection.fielderId) : null,
+        };
+        cardPickerCallback = callback;
+        const batters = initialSelection
+            ? [findRow(team.batting, team.strikerId), findRow(team.batting, team.nonStrikerId)].filter(Boolean)
+            : runoutBatterPool();
+
+        cardPickerGrid.classList.remove('ig-picker-grid');
+        cardPickerGrid.classList.add('runout-picker-grid');
+        cardPickerModal.classList.add('runout-picker-modal');
+        cardPickerGrid.innerHTML = `
+            <div class="runout-picker-section">
+                <div class="runout-picker-heading">Who Got Run Out?</div>
+                <div class="runout-picker-players runout-picker-players-batters" data-runout-section="out">
+                    ${batters.map((player) => pickerItem(player, cardPickerRunout.outId)).join('')}
+                </div>
+            </div>
+            <div class="runout-picker-divider"></div>
+            <div class="runout-picker-section">
+                <div class="runout-picker-heading">Who Ran Out the Batter?</div>
+                <div class="runout-picker-players" data-runout-section="fielder">
+                    ${team.bowling.map((player) => pickerItem(player, cardPickerRunout.fielderId)).join('')}
+                </div>
+            </div>
+        `;
+        cardPickerGrid.querySelectorAll('.runout-picker-players').forEach((section) => {
+            section.querySelectorAll('.ig-picker-item').forEach((item) => {
+                item.addEventListener('click', () => {
+                    section.querySelectorAll('.ig-picker-item').forEach((i) => i.classList.remove('ig-picker-selected'));
+                    item.classList.add('ig-picker-selected');
+                    if (!cardPickerRunout) return;
+                    if (section.dataset.runoutSection === 'out') cardPickerRunout.outId = item.dataset.id;
+                    else cardPickerRunout.fielderId = item.dataset.id;
+                });
+            });
         });
+        cardPickerOverlay.style.display = 'flex';
+        cardPickerModal.scrollTop = 0;
     }
 
     function runoutBallBody(runout) {
@@ -893,17 +1114,19 @@ function abortInput() {
             pendingRunoutCard.innerHTML = '';
             return;
         }
-        const playerButton = (role, player) => `
-            <button type="button" class="pending-runout-player" data-edit-runout-player="${role}">
-                <img src="${escapeHtml(player.image || '/images/placeholder-player.svg')}" alt="${escapeHtml(player.name)}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
-                <span>${escapeHtml(player.name)}</span>
+        const playerButton = `
+            <button type="button" class="pending-runout-player" data-edit-runout-players aria-label="Edit run-out batter and fielder">
+                <img src="${escapeHtml(batter.image || '/images/placeholder-player.svg')}" alt="${escapeHtml(batter.name)}" onerror="this.onerror=null;this.src='/images/placeholder-player.svg';">
+                <span class="pending-runout-player-summary">
+                    <span>Out: ${escapeHtml(batter.name)}</span>
+                    <span>Fielder: ${escapeHtml(fielder.name)}</span>
+                </span>
             </button>
         `;
         pendingRunoutCard.innerHTML = `
             <div class="pending-runout-details">
                 <strong class="pending-runout-title">Run Out</strong>
-                ${playerButton('fielder', fielder)}
-                ${playerButton('batter', batter)}
+                ${playerButton}
                 <button type="button" class="pending-runout-runs" data-edit-runout-runs>
                     ${pendingRunout.runoutRuns} run${pendingRunout.runoutRuns === 1 ? '' : 's'}
                 </button>
@@ -1000,7 +1223,7 @@ function abortInput() {
                 pendingScoring.body.fielderId = id;
                 renderPendingRunout();
                 persistLocalState();
-            });
+            }, { substituteSide: 'bowling' });
             return;
         }
 
@@ -1029,6 +1252,7 @@ function abortInput() {
 
         if (target.hasAttribute('data-edit-pending-noball')) {
             navStack = ['main', 'noball'];
+            editingPendingNoBall = true;
             renderScorePad();
             return;
         }
@@ -1050,23 +1274,20 @@ function abortInput() {
             return;
         }
 
-        if (target.hasAttribute('data-edit-runout-player')) {
-            const role = target.dataset.editRunoutPlayer;
-            const players = role === 'fielder'
-                ? team.bowling
-                : [findRow(team.batting, team.strikerId), findRow(team.batting, team.nonStrikerId)].filter(Boolean);
-            openCardPicker(players, role === 'fielder' ? 'Who Ran Out the Batter?' : 'Who Got Run Out?', (id) => {
+        if (target.hasAttribute('data-edit-runout-players')) {
+            openRunoutPicker((outId, fielderId) => {
                 if (!pendingRunout) return;
-                if (role === 'fielder') pendingRunout.fielderId = id;
-                else pendingRunout.outPlayerId = id;
+                pendingRunout.outPlayerId = outId;
+                pendingRunout.fielderId = fielderId;
                 renderPendingRunout();
                 persistLocalState();
-            });
+            }, { outId: pendingRunout.outPlayerId, fielderId: pendingRunout.fielderId });
             return;
         }
 
         if (target.hasAttribute('data-edit-runout-runs')) {
             navStack = ['main', 'runoutRuns'];
+            editingPendingRunoutRuns = true;
             renderScorePad();
             return;
         }
@@ -1097,9 +1318,10 @@ function abortInput() {
     // itself the last legal ball of the overs — either way the
     // innings is over and there's no new batsman to pick.
     function newBatsmanRequired(isLegalBall) {
-        const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
+        const reserved = pendingNewBatsmanId();
+        const eligible = team.batting.filter((p) => p.status === 'yet_to_bat' && String(p.id) !== reserved);
         const inningsEndingBall = isLegalBall && (team.legalBalls + 1) >= (match.overs * 6);
-        return eligible.length > 0 && !inningsEndingBall;
+        return (eligible.length > 0 || substitutePlayers.length > 0) && !inningsEndingBall;
     }
 
     function pickNewBatsman(callback, isLegalBall) {
@@ -1108,41 +1330,37 @@ function abortInput() {
             if (callback) callback();
             return;
         }
-        const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
+        const reserved = pendingNewBatsmanId();
+        const eligible = team.batting.filter((p) => p.status === 'yet_to_bat' && String(p.id) !== reserved);
         openCardPicker(eligible, 'New Batsman', (id) => {
             newBatsmanId = id;
             if (callback) callback();
-        });
+        }, { substituteSide: 'batting' });
     }
 
     // Run Out flow — shared by regular and no-ball run-outs. The fielder,
     // dismissed batter, and completed runs are staged for review before submit.
     function startRunoutFlow(isNoBall) {
-        if (pendingRunout) {
-            showScoreNotice('Confirm or discard the pending run out before entering another run out.');
-            return;
-        }
         resetOutState();
         outType = 'runout';
         isNoBallRunout = isNoBall;
-        openCardPicker(team.bowling, 'Who Ran Out the Batter?', (id) => {
-            fielderId = id;
-            pickOutPlayer(() => {
-                pushLevel('runoutRuns');
-            });
+        openRunoutPicker((outId, fielder) => {
+            outPlayerId = outId;
+            fielderId = fielder;
+            pushLevel('runoutRuns');
         });
     }
 
     function startMankadFlow() {
         resetOutState();
         const eligible = team.batting.filter((p) => p.status === 'yet_to_bat');
-        if (!eligible.length) {
+        if (!eligible.length && !substitutePlayers.length) {
             queueBall({ type: 'mankad', newBatsmanId: null });
             return;
         }
         openCardPicker(eligible, 'New Batter After Mankad', (id) => {
             queueBall({ type: 'mankad', newBatsmanId: id });
-        });
+        }, { substituteSide: 'batting' });
     }
 
     // Handles every dismissal that needs more than one piece of info
@@ -1268,18 +1486,14 @@ function abortInput() {
                 btn.classList.add('score-pad-btn-pressed');
                 setTimeout(() => btn.classList.remove('score-pad-btn-pressed'), 320);
 
-                if ((pendingRunout || pendingScoring) && scorePadGrid.contains(btn)) {
-                    if (pendingScoring && pendingScoring.kind === 'noball'
-                        && currentLevel() === 'noball' && btn.dataset.nb) {
-                        pendingScoring.body = noBallBody(btn.dataset.nb);
-                        navStack = ['main'];
-                        renderScorePad();
-                        persistLocalState();
-                        return;
-                    }
-                    const editingRunoutRuns = pendingRunout && currentLevel() === 'runoutRuns'
-                        && btn.dataset.runoutruns !== undefined;
-                    if (!editingRunoutRuns && !commitPendingScoring()) return;
+                if (editingPendingNoBall && pendingScoring && pendingScoring.kind === 'noball'
+                    && currentLevel() === 'noball' && btn.dataset.nb) {
+                    editingPendingNoBall = false;
+                    pendingScoring.body = noBallBody(btn.dataset.nb);
+                    navStack = ['main'];
+                    renderScorePad();
+                    persistLocalState();
+                    return;
                 }
 
                 // ---- root: parent nodes ----
@@ -1328,6 +1542,7 @@ function abortInput() {
                         // is chosen, ask for the new batsman straight away.
                         pickFielder(() => {
                             pickNewBatsman(() => {
+                                if (!commitBeforeStaging()) return;
                                 pendingScoring = {
                                     kind: 'dismissal',
                                     body: {
@@ -1349,6 +1564,7 @@ function abortInput() {
                         // is chosen, ask for the new batsman straight away.
                         pickStumper(() => {
                             pickNewBatsman(() => {
+                                if (!commitBeforeStaging()) return;
                                 pendingScoring = {
                                     kind: 'dismissal',
                                     body: {
@@ -1369,12 +1585,18 @@ function abortInput() {
                     } else if (outType === 'retired') {
                         // Retire never consumes a ball, so it can only end
                         // the innings via all-out, never via overs.
-                        outPlayerId = team.strikerId;
-                        pickNewBatsman(() => submitBall(), false);
+                        pickNewBatsman(() => {
+                            if (!commitBeforeStaging()) return;
+                            outPlayerId = team.strikerId;
+                            submitBall();
+                        }, false);
                     } else if (outType === 'obstructing') {
                         // Always the striker — no picker needed for who.
-                        outPlayerId = team.strikerId;
-                        pickNewBatsman(() => submitBall(), true);
+                        pickNewBatsman(() => {
+                            if (!commitBeforeStaging()) return;
+                            outPlayerId = team.strikerId;
+                            submitBall();
+                        }, true);
                     } else {
                         // bowled / stumping / hitwicket — always the
                         // striker. A wide-stumping isn't a legal ball.
@@ -1399,6 +1621,7 @@ function abortInput() {
 
                 // ---- stage no-ball details for review before submission ----
                 if (btn.dataset.nb) {
+                    if (!commitBeforeStaging()) return;
                     pendingScoring = { kind: 'noball', body: noBallBody(btn.dataset.nb) };
                     navStack = ['main'];
                     renderScorePad();
@@ -1414,7 +1637,8 @@ function abortInput() {
                 // ---- run-out runs-completed sub-screen ----
                 if (btn.dataset.runoutruns !== undefined) {
                     runoutRuns = Number(btn.dataset.runoutruns);
-                    if (pendingRunout) {
+                    if (pendingRunout && editingPendingRunoutRuns) {
+                        editingPendingRunoutRuns = false;
                         // Editing the runs of an already staged run out:
                         // the new batsman was already chosen, don't ask again.
                         pendingRunout.runoutRuns = runoutRuns;
@@ -1434,6 +1658,7 @@ function abortInput() {
                         newBatsmanId: null,
                     };
                     pickNewBatsman(() => {
+                        if (!commitBeforeStaging()) return;
                         stagedRunout.newBatsmanId = newBatsmanId;
                         pendingRunout = stagedRunout;
                         resetOutState();
@@ -1603,8 +1828,9 @@ scorePadCloseBtn.addEventListener('click', () => {
             if (choice !== 'change' && choice !== 'wrong') return;
             wrong = choice === 'wrong';
         }
-        const pool = team.bowling.filter((p) => String(p.id) !== String(team.currentBowlerId));
-        openCardPicker(pool, wrong ? 'Wrong Bowler: Pick Correct Bowler' : 'Change Bowler', async (id) => {
+        const pool = availableBowlers().filter((p) => String(p.id) !== String(team.currentBowlerId));
+        const substituteOptions = usedOverBowlers();
+        openCardPicker(pool, wrong ? 'Wrong Bowler: Pick Correct Bowler' : 'Change Bowler', async (id, selection = {}) => {
             try {
                 flushBallQueue();
                 await requestChain;
@@ -1614,6 +1840,7 @@ scorePadCloseBtn.addEventListener('click', () => {
                     innings,
                     bowlerId: id,
                     wrongBowler: wrong,
+                    repeatBowler: selection.repeatBowler === true,
                 });
                 if (wrong) {
                     undoSnapshots.concat(redoSnapshots).forEach((snap) => {
@@ -1655,7 +1882,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         const notOut = (p) => p.status !== 'out' && p.status !== 'retired';
         if (role === 'striker') return team.batting.filter((p) => notOut(p) && String(p.id) !== String(setupPicks.nonStriker || ''));
         if (role === 'nonStriker') return team.batting.filter((p) => notOut(p) && String(p.id) !== String(setupPicks.striker || ''));
-        return team.bowling;
+        return availableBowlers();
     }
     function showSetupChip(role) {
         const p = findRow(role === 'bowler' ? team.bowling : team.batting, setupPicks[role]);
@@ -1667,6 +1894,7 @@ scorePadCloseBtn.addEventListener('click', () => {
         setupPicks.striker = team.strikerId;
         setupPicks.nonStriker = team.nonStrikerId;
         setupPicks.bowler = team.currentBowlerId;
+        setupPicks.repeatBowler = false;
         Object.keys(setupChipIds).forEach(showSetupChip);
         updateSetupRoleAvailability();
         // The bowler is changed by tapping the bowler on the score summary,
@@ -1674,20 +1902,6 @@ scorePadCloseBtn.addEventListener('click', () => {
         document.getElementById('spBowlerGroup').style.display = team.currentBowlerId ? 'none' : '';
         scoreSetupOverlay.style.display = 'flex';
     }
-
-    // Rotate Strike: swaps striker and non-striker (use when the strike was
-    // entered wrong and undo is no longer possible). Takes effect on Save.
-    document.getElementById('rotateStrikeBtn').addEventListener('click', () => {
-        if (!setupPicks.striker || !setupPicks.nonStriker) {
-            showScoreNotice('Select both batters before rotating the strike.');
-            return;
-        }
-        const previousStriker = setupPicks.striker;
-        setupPicks.striker = setupPicks.nonStriker;
-        setupPicks.nonStriker = previousStriker;
-        showSetupChip('striker');
-        showSetupChip('nonStriker');
-    });
 
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', (e) => {
         const limitButton = e.target.closest('[data-wicket-limit]');
@@ -1729,9 +1943,15 @@ scorePadCloseBtn.addEventListener('click', () => {
     document.querySelectorAll('#scoreSetupForm .role-pick-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const role = btn.dataset.role;
-            openCardPicker(setupPool(role), setupTitles[role], (id) => {
+            const substituteOptions = role === 'bowler' ? usedOverBowlers() : [];
+            openCardPicker(setupPool(role), setupTitles[role], (id, selection = {}) => {
                 setupPicks[role] = id;
+                if (role === 'bowler') setupPicks.repeatBowler = selection.repeatBowler;
                 showSetupChip(role);
+            }, {
+                substituteSide: role === 'bowler' ? 'bowling' : 'batting',
+                substituteOptions,
+                repeatBowlerIds: substituteOptions.map((player) => player.id),
             });
         });
     });
@@ -1770,6 +1990,7 @@ scorePadCloseBtn.addEventListener('click', () => {
                 strikerId: setupPicks.striker,
                 nonStrikerId: setupPicks.nonStriker,
                 bowlerId: setupPicks.bowler,
+                repeatBowler: setupPicks.repeatBowler === true,
             });
             swaps.forEach((s) => {
                 undoSnapshots.concat(redoSnapshots).forEach((snap) => {
@@ -1818,21 +2039,32 @@ scorePadCloseBtn.addEventListener('click', () => {
         const closeBtn = cardPickerCloseBtn;
         cancelBtn.style.display = 'none';
         closeBtn.style.display = 'none';
-        const pool = team.bowling;
-        openCardPicker(pool, "Select Next Over's Bowler", async (id) => {
+        bowlerPromptOpen = true;
+        const pool = availableBowlers();
+        const substituteOptions = usedOverBowlers(true);
+        openCardPicker(pool, "Select Next Over's Bowler", async (id, selection = {}) => {
             try {
                 flushBallQueue();
                 await requestChain;
                 const data = await postJson(`/turfs/live/${matchId}/setup`, {
                     innings: match.currentInnings,
                     bowlerId: id,
+                    repeatBowler: selection.repeatBowler === true,
                 });
                 cancelBtn.style.display = '';
                 closeBtn.style.display = '';
+                bowlerPromptOpen = false;
                 handleMatchUpdate(data.match);
+                if (heldBall) {
+                    const ball = heldBall;
+                    heldBall = null;
+                    queueBall(ball);
+                }
             } catch (err) {
                 cancelBtn.style.display = '';
                 closeBtn.style.display = '';
+                bowlerPromptOpen = false;
+                heldBall = null;
                 console.error(err);
             }
         });

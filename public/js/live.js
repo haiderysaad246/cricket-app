@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const match = window.MATCH;
     const matchId = match._id;
+    let substitutePlayers = Array.isArray(window.SUBSTITUTE_PLAYERS) ? window.SUBSTITUTE_PLAYERS : [];
 
     tabs.forEach((tab) => {
         tab.addEventListener('click', () => {
@@ -65,10 +66,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let cardPickerSelectedId = null;
     let cardPickerCallback = null;
 
-    function openCardPicker(players, title, currentId, callback) {
+    let cardPickerOptions = {};
+    let cardPickerRepeatBowlerIds = new Set();
+    const cardPickerAddSubstitute = document.getElementById('cardPickerAddSubstitute');
+
+    function openCardPicker(players, title, currentId, callback, options = {}) {
         cardPickerTitle.textContent = title;
         cardPickerSelectedId = currentId ? String(currentId) : null;
         cardPickerCallback = callback;
+        cardPickerOptions = options;
+        cardPickerRepeatBowlerIds = new Set((options.repeatBowlerIds || []).map(String));
+        cardPickerAddSubstitute.hidden = !options.substituteSide
+            || (!substitutePlayers.length && !(options.substituteOptions || []).length);
 
         cardPickerGrid.innerHTML = players.map((p) => `
             <div class="player-card picker-player-card${String(p.id) === cardPickerSelectedId ? ' picker-selected' : ''}" data-id="${p.id}">
@@ -95,6 +104,33 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerOverlay.style.display = 'flex';
     }
 
+    cardPickerAddSubstitute.addEventListener('click', () => {
+        if (!cardPickerOptions.substituteSide) return;
+        const parentCallback = cardPickerCallback;
+        const { substituteSide, substituteOptions = [] } = cardPickerOptions;
+        const repeatBowlerIds = substituteOptions.map((player) => String(player.id));
+        openCardPicker([...substitutePlayers, ...substituteOptions], 'Substitute Players / Used Bowlers', null, async (id, selection = {}) => {
+            const alreadyInMatch = ['team1', 'team2'].some((key) =>
+                [...(match[key].batting || []), ...(match[key].bowling || [])]
+                    .some((player) => String(player.id) === String(id)));
+            if (!alreadyInMatch) {
+                try {
+                    const data = await postJson(`/turfs/live/${matchId}/substitute`, {
+                        playerId: id,
+                        side: substituteSide,
+                    });
+                    Object.assign(match, data.match);
+                    window.MATCH = match;
+                    substitutePlayers = substitutePlayers.filter((player) => String(player.id) !== String(id));
+                } catch (err) {
+                    alert(err.message || 'Could not add substitute player.');
+                    return;
+                }
+            }
+            if (parentCallback) parentCallback(id, selection);
+        }, { repeatBowlerIds });
+    });
+
     document.getElementById('cancelCardPicker').addEventListener('click', () => {
         cardPickerOverlay.style.display = 'none';
     });
@@ -105,7 +141,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         cardPickerOverlay.style.display = 'none';
-        if (cardPickerCallback) cardPickerCallback(cardPickerSelectedId);
+        if (cardPickerCallback) cardPickerCallback(cardPickerSelectedId, {
+            repeatBowler: cardPickerRepeatBowlerIds.has(String(cardPickerSelectedId)),
+        });
     });
 
     function chipHtml(player) {
@@ -126,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'nonStriker':
                 return t.batting.filter((p) => p.status !== 'out' && p.status !== 'retired' && String(p.id) !== String(roleValues.striker || ''));
             case 'bowler':
-                return t.bowling;
+                return t.bowling.filter((p) => (Number(p.balls) || 0) < 6);
             default:
                 return [];
         }
@@ -141,17 +179,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // roleValues holds the currently chosen player id per role button,
     // separate from window.MATCH so unsaved picks don't leak into state.
     const roleValues = {};
+    const usedOverBowlers = () => currentTeam().bowling.filter((player) =>
+        (Number(player.balls) || 0) >= 6 && String(player.id) !== String(currentTeam().currentBowlerId));
 
     document.querySelectorAll('.role-pick-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const role = btn.dataset.role;
             const pool = poolForRole(role);
             const currentId = roleValues[role] || null;
-            openCardPicker(pool, roleTitles[role] || 'Select Player', currentId, (id) => {
+            const substituteOptions = role === 'bowler' ? usedOverBowlers() : [];
+            openCardPicker(pool, roleTitles[role] || 'Select Player', currentId, (id, selection = {}) => {
                 roleValues[role] = id;
+                if (role === 'bowler') roleValues.repeatBowler = selection.repeatBowler;
                 const player = findPlayer(pool, id);
+                const actualPlayer = player || [...substitutePlayers, ...substituteOptions,
+                    ...currentTeam().batting, ...currentTeam().bowling].find((candidate) => String(candidate.id) === String(id));
                 const chipEl = document.getElementById('picked' + role.charAt(0).toUpperCase() + role.slice(1));
-                if (chipEl) chipEl.innerHTML = chipHtml(player);
+                if (chipEl) chipEl.innerHTML = chipHtml(actualPlayer);
+            }, {
+                substituteSide: role === 'bowler' ? 'bowling' : 'batting',
+                substituteOptions,
+                repeatBowlerIds: substituteOptions.map((player) => player.id),
             });
         });
     });
@@ -187,6 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mode === 'initial') {
             initialSetupFields.style.display = '';
             ['striker', 'nonStriker', 'bowler'].forEach((role) => resetRoleChip(role));
+            roleValues.repeatBowler = false;
             const prefill = { striker: t.strikerId, nonStriker: t.nonStrikerId, bowler: t.currentBowlerId };
             Object.keys(prefill).forEach((role) => {
                 if (!prefill[role]) return;
@@ -243,6 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 strikerId,
                 nonStrikerId,
                 bowlerId,
+                repeatBowler: roleValues.repeatBowler === true,
             });
             // All four roles just got set — go straight into scoring
             // instead of leaving the user to find the "Score Ball" button.

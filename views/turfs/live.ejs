@@ -360,6 +360,7 @@
 
     <script>
         window.MATCH = <%- JSON.stringify(match) %>;
+        window.SUBSTITUTE_PLAYERS = <%- JSON.stringify(typeof substitutePlayers !== 'undefined' ? substitutePlayers : []) %>;
         window.IS_ADMIN = <%- isAdmin ? 'true' : 'false' %>;
     </script>
     <%- include('../includes/scripts.ejs') %>
