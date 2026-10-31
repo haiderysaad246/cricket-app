@@ -20,7 +20,8 @@
             map.set(key, {
                 id: key, name, image,
                 runs: 0, balls: 0, fours: 0, sixes: 0, dismissals: 0,
-                wickets: 0, ballsBowled: 0, runsConceded: 0,
+                highestScore: 0, highestScoreBalls: 0,
+                wickets: 0, ballsBowled: 0, runsConceded: 0, wideCount: 0, noBallCount: 0,
                 catches: 0, mvpPts: 0, matchMvpCount: 0,
             });
         }
@@ -50,6 +51,10 @@
                     p.balls += row.balls || 0;
                     p.fours += row.fours || 0;
                     p.sixes += row.sixes || 0;
+                    if ((row.runs || 0) > p.highestScore) {
+                        p.highestScore = row.runs || 0;
+                        p.highestScoreBalls = row.balls || 0;
+                    }
                     if (row.status === 'out') {
                         p.dismissals += 1;
                         const catcher = parseCatcher(row.dismissalText, team.bowling || []);
@@ -65,6 +70,19 @@
                     p.ballsBowled += row.balls || 0;
                     p.runsConceded += row.runs || 0;
                 });
+            });
+            (match.ballEvents || []).forEach((event) => {
+                if (!event || !event.payload || !event.innings || !event.bowler) return;
+                const payload = event.payload;
+                const isWide = payload.type === 'wide' || (payload.type === 'out' && payload.isWide);
+                const isNoBall = payload.type === 'noball' || (payload.type === 'out' && payload.isNoBall);
+                if (!isWide && !isNoBall) return;
+                const bowlingTeam = match[event.innings];
+                const bowler = (bowlingTeam && bowlingTeam.bowling || []).find((row) => row.name === event.bowler);
+                if (!bowler || !bowler.id) return;
+                const p = bucket(players, bowler.id, bowler.name, bowler.image);
+                if (isWide) p.wideCount += 1;
+                if (isNoBall) p.noBallCount += 1;
             });
             if (window.CricketMVP) {
                 try {
@@ -95,6 +113,14 @@
             value: (p) => fmt(p.mvpPts),
         },
         runs: { title: 'Most Runs', unit: 'Runs', filter: (p) => p.runs > 0, sort: (a, b) => b.runs - a.runs, value: (p) => p.runs },
+        highestscore: {
+            title: 'Highest Individual Batting Score',
+            unit: 'Runs',
+            filter: (p) => p.highestScore > 0,
+            sort: (a, b) => b.highestScore - a.highestScore,
+            value: (p) => p.highestScore,
+            extraColumns: [{ header: 'Balls Faced', value: (p) => p.highestScoreBalls }],
+        },
         sixes: { title: 'Most Sixes', unit: 'Sixes', filter: (p) => p.sixes > 0, sort: (a, b) => b.sixes - a.sixes, value: (p) => p.sixes },
         fours: { title: 'Most Fours', unit: 'Fours', filter: (p) => p.fours > 0, sort: (a, b) => b.fours - a.fours, value: (p) => p.fours },
         wickets: { title: 'Most Wickets', unit: 'Wkts', filter: (p) => p.wickets > 0, sort: (a, b) => b.wickets - a.wickets, value: (p) => p.wickets },
@@ -107,6 +133,25 @@
             extraColumns: [
                 { header: 'Overs', value: (p) => `${Math.floor(p.ballsBowled / 6)}.${p.ballsBowled % 6}` },
                 { header: 'Wkts', value: (p) => p.wickets },
+            ],
+        },
+        leastconceded: {
+            title: 'Least Runs Conceded by Bowlers',
+            unit: 'Runs',
+            filter: (p) => p.ballsBowled > 0,
+            sort: (a, b) => a.runsConceded - b.runsConceded || b.ballsBowled - a.ballsBowled,
+            value: (p) => p.runsConceded,
+            extraColumns: [{ header: 'Balls Bowled', value: (p) => p.ballsBowled }],
+        },
+        extras: {
+            title: 'Most Extras by Bowlers',
+            unit: 'Extras',
+            filter: (p) => p.wideCount + p.noBallCount > 0,
+            sort: (a, b) => (b.wideCount + b.noBallCount) - (a.wideCount + a.noBallCount),
+            value: (p) => p.wideCount + p.noBallCount,
+            extraColumns: [
+                { header: 'Wides', value: (p) => p.wideCount },
+                { header: 'No Balls', value: (p) => p.noBallCount },
             ],
         },
         catches: { title: 'Most Catches', unit: 'Catches', filter: (p) => p.catches > 0, sort: (a, b) => b.catches - a.catches, value: (p) => p.catches },

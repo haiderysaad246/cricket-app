@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!match) return; // not on the score page
     const matchId = match._id;
     let team = match[match.currentInnings];
+    const substitutionsEnabled = Boolean(match.tournamentId);
     let substitutePlayers = Array.isArray(window.SUBSTITUTE_PLAYERS) ? window.SUBSTITUTE_PLAYERS : [];
     let isSubmitting = false; // guards non-ball actions (undo, setup, end innings)
     let undoSnapshots = JSON.parse(JSON.stringify(match.lastBallSnapshots || []));
@@ -716,8 +717,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let cardPickerRunout = null; // { outId, fielderId } while the combined Run Out form is open
     let cardPickerOptions = {};
     let cardPickerRepeatBowlerIds = new Set();
-    const cardPickerAddSubstitute = document.getElementById('cardPickerAddSubstitute');
     const cardPickerModal = cardPickerOverlay.querySelector('.picker-modal');
+
+    function substitutePickerTile(label = 'Add substitute') {
+        return `
+            <button type="button" class="picker-add-substitute" data-picker-add-substitute aria-label="Add a substitute player">
+                <span class="picker-add-substitute-avatar"><i class="fa-solid fa-plus"></i></span>
+                <span class="picker-add-substitute-label">${label}</span>
+            </button>
+        `;
+    }
 
     function openCardPicker(players, title, callback, options = {}) {
         cardPickerTitle.textContent = title;
@@ -726,13 +735,18 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerCallback = callback;
         cardPickerOptions = options;
         cardPickerRepeatBowlerIds = new Set((options.repeatBowlerIds || []).map(String));
-        cardPickerAddSubstitute.hidden = !options.substituteSide
-            || (!substitutePlayers.length && !(options.substituteOptions || []).length);
 
         cardPickerGrid.classList.remove('runout-picker-grid');
         cardPickerModal.classList.remove('runout-picker-modal');
         cardPickerGrid.classList.add('ig-picker-grid');
-        cardPickerGrid.innerHTML = Array.from({ length: Math.ceil(players.length / 10) }, (_, pageIndex) => `
+        const hasSubstituteTile = (options.substituteSide && substitutionsEnabled) || (options.substituteOptions || []).length;
+        if (!players.length && !hasSubstituteTile) {
+            cardPickerGrid.innerHTML = '<p class="picker-empty-message">No substitute players available.</p>';
+            cardPickerOverlay.style.display = 'flex';
+            return;
+        }
+        const pageCount = Math.max(1, Math.ceil(players.length / 10));
+        cardPickerGrid.innerHTML = Array.from({ length: pageCount }, (_, pageIndex) => `
             <div class="ig-picker-page">
                 ${players.slice(pageIndex * 10, pageIndex * 10 + 10).map((p) => `
                     <div class="ig-picker-item" data-id="${p.id}">
@@ -743,6 +757,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="ig-picker-name">${p.name}</span>
                     </div>
                 `).join('')}
+                ${pageIndex === pageCount - 1 && options.substituteSide && substitutionsEnabled
+                    ? substitutePickerTile()
+                    : (pageIndex === pageCount - 1 && options.substituteOptions && options.substituteOptions.length
+                        ? substitutePickerTile(substitutionsEnabled ? 'Substitutes / used bowlers' : 'Repeat bowler')
+                        : '')}
             </div>
         `).join('');
 
@@ -757,12 +776,12 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerOverlay.style.display = 'flex';
     }
 
-    cardPickerAddSubstitute.addEventListener('click', () => {
-        if (!cardPickerOptions.substituteSide) return;
+    async function openSubstitutePicker() {
+        if (!cardPickerOptions.substituteSide && !cardPickerOptions.substituteOptions?.length) return;
         const parentCallback = cardPickerCallback;
         const runoutSelection = cardPickerRunout ? { ...cardPickerRunout } : null;
         const { substituteSide, substituteOptions = [] } = cardPickerOptions;
-        const choices = [...substitutePlayers, ...substituteOptions];
+        const choices = [...(substitutionsEnabled ? substitutePlayers : []), ...substituteOptions];
         const repeatBowlerIds = substituteOptions.map((player) => String(player.id));
         openCardPicker(choices, 'Substitute Players / Used Bowlers', async (id, selection = {}) => {
             const alreadyInMatch = ['team1', 'team2'].some((key) =>
@@ -772,6 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (parentCallback) parentCallback(id, selection);
                 return;
             }
+            if (!substitutionsEnabled) return;
             if (needsInternet('Adding a substitute')) return;
             isSubmitting = true;
             try {
@@ -805,6 +825,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 isSubmitting = false;
             }
         }, { repeatBowlerIds });
+    }
+
+    cardPickerGrid.addEventListener('click', (event) => {
+        if (event.target.closest('[data-picker-add-substitute]')) openSubstitutePicker();
     });
 
     // Cancelling a picker just closes the modal and drops back onto
@@ -1018,7 +1042,6 @@ function abortInput() {
     // batters). Below it: who ran out the batter (whole fielding team).
     function openRunoutPicker(callback, initialSelection = null) {
         cardPickerOptions = { substituteSide: 'bowling' };
-        cardPickerAddSubstitute.hidden = !substitutePlayers.length;
         const pickerItem = (p, selectedId) => `
             <div class="ig-picker-item${String(p.id) === selectedId ? ' ig-picker-selected' : ''}" data-id="${p.id}">
                 <div class="ig-picker-avatar-ring">
@@ -1054,6 +1077,7 @@ function abortInput() {
                 <div class="runout-picker-heading">Who Ran Out the Batter?</div>
                 <div class="runout-picker-players" data-runout-section="fielder">
                     ${team.bowling.map((player) => pickerItem(player, cardPickerRunout.fielderId)).join('')}
+                    ${substitutionsEnabled ? substitutePickerTile() : ''}
                 </div>
             </div>
         `;
@@ -1852,6 +1876,10 @@ scorePadCloseBtn.addEventListener('click', () => {
             } catch (err) {
                 console.error(err);
             }
+        }, {
+            substituteSide: 'bowling',
+            substituteOptions,
+            repeatBowlerIds: substituteOptions.map((player) => player.id),
         });
     });
 

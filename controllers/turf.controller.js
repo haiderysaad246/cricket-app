@@ -386,7 +386,7 @@ exports.showLive = async (req, res) => {
             }
         }
         if (wantsJson) return res.json({ match, chain });
-        const substitutePlayers = match.turfId ? await getMatchSubstitutes(match) : [];
+        const substitutePlayers = match.tournamentId ? await getMatchSubstitutes(match) : [];
         res.render("turfs/live.ejs", { match, chain, substitutePlayers });
     } catch (err) {
         console.log(err);
@@ -418,7 +418,7 @@ exports.showScorePad = async (req, res) => {
             return respond(req, res, { json: { error: "innings_not_set_up", matchId: match._id }, redirect: "/turfs/live/" + match._id });
         }
         if (wantsJson) return res.json({ match });
-        const substitutePlayers = match.turfId ? await getMatchSubstitutes(match) : [];
+        const substitutePlayers = match.tournamentId ? await getMatchSubstitutes(match) : [];
         res.render("turfs/score.ejs", { match, substitutePlayers });
     } catch (err) {
         console.log(err);
@@ -954,7 +954,7 @@ exports.setupInnings = async (req, res) => {
 exports.addSubstitute = async (req, res) => {
     try {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
-        if (!match || !match.turfId) return res.status(404).json({ error: "match_not_found" });
+        if (!match || !match.tournamentId) return res.status(404).json({ error: "match_not_found" });
         const { playerId, side } = req.body;
         if (!playerId || !["batting", "bowling"].includes(side)) {
             return res.status(400).json({ error: "invalid_substitute" });

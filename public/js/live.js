@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const match = window.MATCH;
     const matchId = match._id;
+    const substitutionsEnabled = Boolean(match.tournamentId);
     let substitutePlayers = Array.isArray(window.SUBSTITUTE_PLAYERS) ? window.SUBSTITUTE_PLAYERS : [];
 
     tabs.forEach((tab) => {
@@ -68,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let cardPickerOptions = {};
     let cardPickerRepeatBowlerIds = new Set();
-    const cardPickerAddSubstitute = document.getElementById('cardPickerAddSubstitute');
 
     function openCardPicker(players, title, currentId, callback, options = {}) {
         cardPickerTitle.textContent = title;
@@ -76,10 +76,8 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerCallback = callback;
         cardPickerOptions = options;
         cardPickerRepeatBowlerIds = new Set((options.repeatBowlerIds || []).map(String));
-        cardPickerAddSubstitute.hidden = !options.substituteSide
-            || (!substitutePlayers.length && !(options.substituteOptions || []).length);
 
-        cardPickerGrid.innerHTML = players.map((p) => `
+        cardPickerGrid.innerHTML = players.length ? players.map((p) => `
             <div class="player-card picker-player-card${String(p.id) === cardPickerSelectedId ? ' picker-selected' : ''}" data-id="${p.id}">
                 <div class="player-card-link">
                     <div class="player-pic-ring">
@@ -91,10 +89,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <i class="fa-solid fa-circle-check picker-check-icon"></i>
             </div>
-        `).join('');
+        `).join('') + ((options.substituteSide && substitutionsEnabled) || (options.substituteOptions || []).length ? `
+            <button type="button" class="player-card picker-player-card picker-add-substitute" data-picker-add-substitute aria-label="Add a substitute player">
+                <span class="player-pic-ring picker-add-substitute-avatar"><i class="fa-solid fa-plus"></i></span>
+                <span class="player-info picker-add-substitute-label">${substitutionsEnabled ? 'Substitutes / used bowlers' : 'Repeat bowler'}</span>
+            </button>
+        ` : '') : '<p class="picker-empty-message">No substitute players available.</p>';
 
         cardPickerGrid.querySelectorAll('.picker-player-card').forEach((card) => {
             card.addEventListener('click', () => {
+                if (card.hasAttribute('data-picker-add-substitute')) return;
                 cardPickerGrid.querySelectorAll('.picker-player-card').forEach((c) => c.classList.remove('picker-selected'));
                 card.classList.add('picker-selected');
                 cardPickerSelectedId = card.dataset.id;
@@ -104,16 +108,16 @@ document.addEventListener('DOMContentLoaded', () => {
         cardPickerOverlay.style.display = 'flex';
     }
 
-    cardPickerAddSubstitute.addEventListener('click', () => {
-        if (!cardPickerOptions.substituteSide) return;
+    function openSubstitutePicker() {
+        if (!cardPickerOptions.substituteSide && !cardPickerOptions.substituteOptions?.length) return;
         const parentCallback = cardPickerCallback;
         const { substituteSide, substituteOptions = [] } = cardPickerOptions;
         const repeatBowlerIds = substituteOptions.map((player) => String(player.id));
-        openCardPicker([...substitutePlayers, ...substituteOptions], 'Substitute Players / Used Bowlers', null, async (id, selection = {}) => {
+        openCardPicker([...(substitutionsEnabled ? substitutePlayers : []), ...substituteOptions], 'Substitute Players / Used Bowlers', null, async (id, selection = {}) => {
             const alreadyInMatch = ['team1', 'team2'].some((key) =>
                 [...(match[key].batting || []), ...(match[key].bowling || [])]
                     .some((player) => String(player.id) === String(id)));
-            if (!alreadyInMatch) {
+            if (!alreadyInMatch && substitutionsEnabled) {
                 try {
                     const data = await postJson(`/turfs/live/${matchId}/substitute`, {
                         playerId: id,
@@ -127,8 +131,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             }
+            if (!alreadyInMatch) return;
             if (parentCallback) parentCallback(id, selection);
         }, { repeatBowlerIds });
+    }
+
+    cardPickerGrid.addEventListener('click', (event) => {
+        if (event.target.closest('[data-picker-add-substitute]')) openSubstitutePicker();
     });
 
     document.getElementById('cancelCardPicker').addEventListener('click', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, selectedIds, selectedOrder, onToggle, onCancel, onDone }) {
+export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, lockedOwners, selectedIds, selectedOrder, onToggle, onRequestTransfer, onCancel, onDone }) {
   const [search, setSearch] = useState("");
   useEffect(() => { if (open) setSearch(""); }, [open]);
 
@@ -36,13 +36,21 @@ export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, s
 
         <div className="players-grid picker-grid">
           {players.map((p) => {
-            const locked = lockedIds.has(p._id);
             const selected = selectedIds.has(p._id);
+            const locked = lockedIds.has(p._id) && !selected;
             return (
               <div
                 key={p._id}
                 className={`player-card picker-player-card ${selected ? "picker-selected" : ""} ${locked ? "picker-disabled" : ""}`}
-                onClick={() => !locked && onToggle(p)}
+                role="button"
+                tabIndex={0}
+                onClick={() => locked ? onRequestTransfer(p, lockedOwners.get(p._id)) : onToggle(p)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    locked ? onRequestTransfer(p, lockedOwners.get(p._id)) : onToggle(p);
+                  }
+                }}
               >
                 <div className="player-card-link">
                   <div className="player-pic-ring">
@@ -55,7 +63,7 @@ export default function TeamPlayerPicker({ open, title, allPlayers, lockedIds, s
                   </div>
                   <div className="player-info">
                     <span className="player-name">{p.name}</span>
-                    <span className="player-meta">{p.handed} {p.role}</span>
+                    <span className="player-meta">{locked ? `On ${lockedOwners.get(p._id)?.name || "another team"} · tap to transfer` : `${p.handed} ${p.role}`}</span>
                   </div>
                 </div>
                 <i className="fa-solid fa-circle-check picker-check-icon" />

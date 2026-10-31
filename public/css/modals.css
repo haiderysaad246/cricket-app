@@ -51,27 +51,56 @@
 .turf-form-modal .add-player-title,
 .picker-modal .add-player-title { text-align: center; }
 
-.picker-title-row {
+.picker-add-substitute {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 4px 16px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--color-text);
+    text-align: center;
+    cursor: pointer;
+}
+.picker-add-substitute-avatar {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-}
-.picker-title-row .add-player-title { margin: 0; }
-.picker-add-substitute {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border: 0;
+    width: 64px;
+    height: 64px;
+    border: 2px dashed var(--color-accent-green);
     border-radius: 50%;
-    background: var(--color-accent-green);
-    color: #fff;
-    cursor: pointer;
+    color: var(--color-accent-green);
+    font-size: 24px;
 }
-.picker-add-substitute[hidden] { display: none; }
+.picker-add-substitute-label {
+    max-width: 90px;
+    color: var(--color-text-soft);
+    font-size: 12px;
+}
+.picker-empty-message {
+    grid-column: 1 / -1;
+    color: var(--color-text-soft);
+    text-align: center;
+}
+.picker-modal .picker-add-substitute {
+    min-width: 0;
+    min-height: 0;
+}
+.picker-modal .picker-add-substitute-avatar {
+    width: 48px;
+    height: 48px;
+    flex: 0 0 auto;
+}
+.picker-modal .runout-picker-players .picker-add-substitute {
+    padding: 8px 4px 10px;
+}
+.picker-modal .runout-picker-players .picker-add-substitute-avatar {
+    width: 56px;
+    height: 56px;
+}
 
 /* --- Turf team form blocks --- */
 .turf-team-form-block {
