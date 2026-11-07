@@ -1,6 +1,7 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Player = require("./models/player.model");
+const Match = require("./models/matches");
 
 const MONGO_URL = process.env.MONGO_URL || "mongodb://127.0.0.1:27017/cricket";
 
@@ -14,6 +15,7 @@ const zeroStatBlock = {
         highest: 0,
         highestBalls: 0,
         ducks: 0,
+        timesOut: 0,
         ballsFaced: 0,
         dots: 0,
         fours: 0,
@@ -48,8 +50,21 @@ async function run() {
                 turfStats: zeroStatBlock,
                 matchMvpCount: 0,
                 turfMvpCount: 0,
+                statsAppliedMatchIds: [],
+                mvpAppliedMatchIds: [],
+                tournamentMvpAppliedIds: [],
             },
             $unset: { tclStats: 1 },
+        }
+    );
+
+    await Match.updateMany(
+        {},
+        {
+            $set: {
+                "team1.statsAggregated": false,
+                "team2.statsAggregated": false,
+            },
         }
     );
 

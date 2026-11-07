@@ -12,6 +12,7 @@ const battingStatsSchema = new Schema({
     highest: { type: Number, default: 0 },
     highestBalls: { type: Number, default: 0 },
     ducks: { type: Number, default: 0 },
+    timesOut: { type: Number, default: 0 },
     ballsFaced: { type: Number, default: 0 },
     dots: { type: Number, default: 0 },
     fours: { type: Number, default: 0 },
@@ -75,6 +76,12 @@ const playerSchema = new Schema({
     // How many whole turf sessions this player was crowned MVP of (highest
     // combined MVP points among players with at least one Match MVP).
     turfMvpCount: { type: Number, default: 0 },
+    // Match IDs whose career totals and Match MVP award have already been
+    // applied by the recovery script. These marker arrays make manual
+    // one-match-at-a-time recovery idempotent.
+    statsAppliedMatchIds: { type: [String], default: [] },
+    mvpAppliedMatchIds: { type: [String], default: [] },
+    tournamentMvpAppliedIds: { type: [String], default: [] },
 });
 
 // Model name kept as "players" (unchanged) so it maps to the same

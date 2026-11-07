@@ -59,7 +59,7 @@ try {
     assert.strictEqual(extras[2], '2');
     assert.strictEqual(extras[3], '1');
 
-    for (const template of ['views/turfs/session.ejs', 'views/tcl/session.ejs']) {
+    for (const template of ['views/tcl/session.ejs']) {
         const content = fs.readFileSync(path.join(root, template), 'utf8');
         for (const stat of tabs) {
             assert.ok(content.includes(`data-stat="${stat}"`), `${template} should include ${stat} tab`);

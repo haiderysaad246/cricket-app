@@ -71,6 +71,16 @@ const TurfStub = {
     async findOne(q) { const t = db.turfs.get(String(q._id)); return t || null; },
     async findByIdAndDelete(id) { db.turfs.delete(String(id)); },
 };
+const TeamStub = {
+    async find() {
+        return [{
+            _id: 'reserve-team',
+            players: [...db.players.keys()]
+                .filter((id) => String(id).startsWith('c'))
+                .map((id) => ({ _id: id })),
+        }];
+    },
+};
 function stub(rel, exp) {
     const f = require.resolve(path.join(ROOT, rel));
     require.cache[f] = { id: f, filename: f, loaded: true, exports: exp, children: [], paths: [] };
@@ -78,7 +88,8 @@ function stub(rel, exp) {
 stub('models/matches.js', MatchStub);
 stub('models/player.model.js', PlayerStub);
 stub('models/turfs.js', TurfStub);
-['models/counters.js', 'models/team.model.js', 'models/tcl.model.js', 'models/session.model.js'].forEach((m) => stub(m, {}));
+['models/counters.js', 'models/tcl.model.js', 'models/session.model.js'].forEach((m) => stub(m, {}));
+stub('models/team.model.js', TeamStub);
 const ctrl = require(path.join(ROOT, 'controllers/turf.controller.js'));
 const { computeMVP } = require(path.join(ROOT, 'utils/mvp.js'));
 

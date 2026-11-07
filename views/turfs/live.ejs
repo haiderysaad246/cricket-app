@@ -32,7 +32,15 @@
 
         <!-- Score summary card -->
         <div id="liveViewSummary" style="display:contents;">
-            <%- include('./includes/live-score-summary.ejs', { match, chain }) %>
+            <%
+                const liveCurrentTeam = match[match.currentInnings];
+                const liveWicketCap = match.isSuperOver
+                    ? 2
+                    : (liveCurrentTeam.wicketLimit || Math.max(0, (liveCurrentTeam.batting || []).length - 1));
+                const showEndInningsButton = match.status === 'live'
+                    && (liveCurrentTeam.wickets || 0) >= liveWicketCap;
+            %>
+            <%- include('./includes/live-score-summary.ejs', { match, chain, showEndInningsButton }) %>
         </div>
 
         <% const battingFirstTeam = match.battingFirst === 'team2' ? match.team2 : match.team1; %>
@@ -177,12 +185,12 @@
                     return '•';
                 }; %>
                 <% const recordBallClass = (value) => value.toLowerCase().startsWith('wd') ? 'is-wide' : (value.toLowerCase().startsWith('nb') ? 'is-no-ball' : (value.toLowerCase() === 'w' ? 'is-wicket' : '')); %>
-                <% const recordOverFigures = (overEvents) => {
+                <% const recordOverFigures = (overEvents, inningsKey) => {
                     const batters = new Map();
                     const bowlers = new Map();
                     const batterRow = (name) => {
                         if (!name || name === 'Unknown player') return null;
-                        if (!batters.has(name)) batters.set(name, { name, runs: 0, balls: 0 });
+                        if (!batters.has(name)) batters.set(name, { name, runs: 0, balls: 0, isOut: false });
                         return batters.get(name);
                     };
                     const bowlerRow = (name) => {
@@ -198,6 +206,17 @@
                         const striker = batterRow(event.striker);
                         batterRow(event.nonStriker);
                         const bowler = bowlerRow(event.bowler);
+                        if (type === 'out') {
+                            const dismissedId = payload.outPlayerId;
+                            let dismissedName = event.striker;
+                            if (dismissedId) {
+                                const dismissedRow = match[inningsKey].batting.find((player) =>
+                                    String(player.id) === String(dismissedId));
+                                if (dismissedRow) dismissedName = dismissedRow.name;
+                            }
+                            const dismissedBatter = batterRow(dismissedName);
+                            if (dismissedBatter) dismissedBatter.isOut = true;
+                        }
                         let batterRuns = 0;
                         let bowlerRuns = 0;
                         if (Object.prototype.hasOwnProperty.call(runTypes, type)) {
@@ -264,7 +283,7 @@
                         <% for (const over of overs) { %>
                             <div class="records-over">
                                 <% const overEvents = inningsEvents.filter((item) => item.over === over); %>
-                                <% const overFigures = recordOverFigures(rawInningsEvents.filter((item) => item.over === over)); %>
+                                <% const overFigures = recordOverFigures(rawInningsEvents.filter((item) => item.over === over), inningsKey); %>
                                 <div class="records-over-heading">
                                     <strong>Over <%= over %></strong>
                                     <div class="live-over-balls" aria-label="Over ball results">
@@ -277,7 +296,7 @@
                                 <div class="records-over-summary">
                                     <div class="records-over-batters">
                                         <% for (const batter of overFigures.batters) { %>
-                                            <span class="records-over-player"><strong><%= batter.name %></strong><span>Runs <%= batter.runs %> · Balls <%= batter.balls %></span></span>
+                                            <span class="records-over-player <%= batter.isOut ? 'is-out' : '' %>"><strong><%= batter.name %></strong><span>Runs <%= batter.runs %> · Balls <%= batter.balls %></span></span>
                                         <% } %>
                                     </div>
                                     <div class="records-over-bowlers">

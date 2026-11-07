@@ -464,6 +464,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const liveNonStriker = (liveTeam.batting || []).find((p) => String(p.id) === String(liveTeam.nonStrikerId));
         const liveBowler = (liveTeam.bowling || []).find((p) => String(p.id) === String(liveTeam.currentBowlerId));
         const liveExtras = (liveTeam.extraWides || 0) + (liveTeam.extraNoBalls || 0);
+        const liveWicketCap = m.isSuperOver ? 2 : (liveTeam.wicketLimit || Math.max(0, (liveTeam.batting || []).length - 1));
+        const liveTeamAllOut = (liveTeam.wickets || 0) >= liveWicketCap;
         const liveSecondKey = m.battingFirst === 'team1' ? 'team2' : 'team1';
         const liveTarget = m.currentInnings === liveSecondKey ? ((m[m.battingFirst]?.totalRuns || 0) + 1) : null;
 
@@ -545,7 +547,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="live-footer-value">${liveExtras} <span class="scorecard-extras-detail">(W ${liveTeam.extraWides || 0}, NB ${liveTeam.extraNoBalls || 0}) = ${liveExtras}</span></span>
                     </div>
                     <div class="live-footer-item live-footer-item-right">
-                        ${m.status === 'live' ? `
+                        ${m.status === 'live' && liveTeamAllOut ? `
                             <button type="button" class="live-end-innings-btn" data-action="end-innings" title="End innings" aria-label="End innings">
                                 <i class="fa-solid fa-flag-checkered" aria-hidden="true"></i>
                             </button>
@@ -981,7 +983,12 @@ function abortInput() {
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (event) => {
         if (!event.target.closest('[data-action="end-innings"]') || isActionLocked()) return;
         if (needsInternet('Ending the innings')) return;
-        if (!confirm('End this innings now with the current score? Use this only when there are no batsmen left to bring in.')) return;
+        const wicketCap = match.isSuperOver ? 2 : (team.wicketLimit || Math.max(0, (team.batting || []).length - 1));
+        const allOut = (team.wickets || 0) >= wicketCap;
+        const prompt = allOut && substitutePlayers.length
+            ? 'Batting team is all out. OK declares the innings finished and switches innings; Cancel only if a substitute replacement is genuinely needed.'
+            : 'Declare this innings finished and switch to the second innings?';
+        if (!confirm(prompt)) return;
         try {
             flushBallQueue();
             await requestChain;
@@ -997,21 +1004,37 @@ function abortInput() {
     // Rotate Strike icon (where Target used to be): swaps striker and
     // non-striker right away, for when the strike was entered wrong.
     document.getElementById('liveScoreSummaryWrapper').addEventListener('click', async (event) => {
-        if (!event.target.closest('[data-action="rotate-strike"]') || isActionLocked()) return;
+        const rotateButton = event.target.closest('[data-action="rotate-strike"]');
+        if (!rotateButton || isActionLocked()) return;
         if (pendingRunout || pendingScoring) {
             showScoreNotice('Confirm or discard the pending input before rotating the strike.');
             return;
         }
         if (needsInternet('Rotating the strike')) return;
+        const current = match[match.currentInnings];
+        if (!current.strikerId || !current.nonStrikerId) {
+            showScoreNotice('Set both batters before rotating the strike.');
+            return;
+        }
+
+        rotateButton.classList.add('is-clicked');
+        rotateButton.setAttribute('aria-pressed', 'true');
         isSubmitting = true;
+        const previousMatch = JSON.parse(JSON.stringify(match));
         try {
+            // Update the visible crease immediately instead of waiting for
+            // queued balls and the setup request to finish.
+            const optimisticMatch = JSON.parse(JSON.stringify(match));
+            const optimisticTeam = optimisticMatch[optimisticMatch.currentInnings];
+            [optimisticTeam.strikerId, optimisticTeam.nonStrikerId] =
+                [optimisticTeam.nonStrikerId, optimisticTeam.strikerId];
+            match = optimisticMatch;
+            window.MATCH = match;
+            team = match[match.currentInnings];
+            document.getElementById('liveScoreSummaryWrapper').innerHTML = renderLiveScoreSummary(match);
+
             flushBallQueue();
             await requestChain;
-            const current = match[match.currentInnings];
-            if (!current.strikerId || !current.nonStrikerId) {
-                showScoreNotice('Set both batters before rotating the strike.');
-                return;
-            }
             const data = await postJson(`/turfs/live/${matchId}/setup`, {
                 innings: match.currentInnings,
                 strikerId: current.nonStrikerId,
@@ -1021,8 +1044,16 @@ function abortInput() {
             handleMatchUpdate(data.match);
         } catch (err) {
             console.error('rotate_strike_failed', err);
+            handleMatchUpdate(previousMatch);
         } finally {
             isSubmitting = false;
+            window.setTimeout(() => {
+                const activeButton = document.querySelector('[data-action="rotate-strike"]');
+                if (activeButton) {
+                    activeButton.classList.remove('is-clicked');
+                    activeButton.setAttribute('aria-pressed', 'false');
+                }
+            }, 400);
         }
     });
 
@@ -1345,10 +1376,23 @@ function abortInput() {
         const reserved = pendingNewBatsmanId();
         const eligible = team.batting.filter((p) => p.status === 'yet_to_bat' && String(p.id) !== reserved);
         const inningsEndingBall = isLegalBall && (team.legalBalls + 1) >= (match.overs * 6);
-        return (eligible.length > 0 || substitutePlayers.length > 0) && !inningsEndingBall;
+        const wicketCap = match.isSuperOver ? 2 : (team.wicketLimit || Math.max(0, team.batting.length - 1));
+        const wicketWouldAllOut = (team.wickets || 0) + 1 >= wicketCap;
+        return (eligible.length > 0 || substitutePlayers.length > 0) && !inningsEndingBall && !wicketWouldAllOut;
     }
 
     function pickNewBatsman(callback, isLegalBall) {
+        const wicketCap = match.isSuperOver ? 2 : (team.wicketLimit || Math.max(0, team.batting.length - 1));
+        const wicketWouldAllOut = (team.wickets || 0) + 1 >= wicketCap;
+        if (wicketWouldAllOut && substitutePlayers.length && !window.confirm(
+            'Batting team will be all out. OK finishes the innings and switches; Cancel to choose a genuine substitute replacement.'
+        )) {
+            openCardPicker([], 'Choose Substitute Replacement', (id) => {
+                newBatsmanId = id;
+                if (callback) callback();
+            }, { substituteSide: 'batting' });
+            return;
+        }
         if (!newBatsmanRequired(isLegalBall)) {
             newBatsmanId = null;
             if (callback) callback();

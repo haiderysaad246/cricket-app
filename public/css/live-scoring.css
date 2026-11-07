@@ -378,6 +378,14 @@
     background: var(--color-surface-5);
 }
 
+.live-rotate-strike-btn:active,
+.live-rotate-strike-btn.is-clicked {
+    border-color: var(--color-accent-green);
+    background: var(--color-accent-green);
+    color: #fff;
+    transform: scale(0.94);
+}
+
 .live-rotate-strike-btn:focus-visible {
     outline: 2px solid var(--color-accent-green);
     outline-offset: 2px;
@@ -522,6 +530,7 @@
 .records-over-bowlers { justify-content: flex-end; margin-left: auto; text-align: right; }
 .records-over-player { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .records-over-player strong { color: var(--color-text); font-size: 12px; overflow-wrap: anywhere; }
+.records-over-player.is-out strong { color: var(--color-text-muted); }
 .records-over-player span { color: var(--color-text-muted); font-size: 11px; }
 .records-over ol { margin: 7px 0 0; padding-left: 4.5rem; }
 .records-over li { padding: 4px 0; color: var(--color-text-soft); }

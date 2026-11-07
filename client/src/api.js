@@ -27,14 +27,4 @@ export const api = {
       body: JSON.stringify({ password }),
     }).then(json),
   logout: () => fetch("/logout", { method: "POST" }).then(json),
-
-  // Turfs — same content-negotiated endpoints the legacy EJS pages use,
-  // just asked for JSON via the Accept header.
-  turfsIndex: () => fetch("/api/turfs", { headers: jsonHeaders }).then(json),
-  createTurf: (payload) =>
-    fetch("/turfs/create", {
-      method: "POST",
-      headers: { ...jsonHeaders, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(json),
 };

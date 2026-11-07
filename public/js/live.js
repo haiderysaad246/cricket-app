@@ -113,7 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const parentCallback = cardPickerCallback;
         const { substituteSide, substituteOptions = [] } = cardPickerOptions;
         const repeatBowlerIds = substituteOptions.map((player) => String(player.id));
-        openCardPicker([...(substitutionsEnabled ? substitutePlayers : []), ...substituteOptions], 'Substitute Players / Used Bowlers', null, async (id, selection = {}) => {
+        const availablePlayers = new Map();
+        for (const player of [...(substitutionsEnabled ? substitutePlayers : []), ...substituteOptions]) {
+            availablePlayers.set(String(player.id), player);
+        }
+        openCardPicker([...availablePlayers.values()], 'Substitute Players / Used Bowlers', null, async (id, selection = {}) => {
             const alreadyInMatch = ['team1', 'team2'].some((key) =>
                 [...(match[key].batting || []), ...(match[key].bowling || [])]
                     .some((player) => String(player.id) === String(id)));
@@ -131,7 +135,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             }
-            if (!alreadyInMatch) return;
             if (parentCallback) parentCallback(id, selection);
         }, { repeatBowlerIds });
     }
@@ -143,6 +146,26 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cancelCardPicker').addEventListener('click', () => {
         cardPickerOverlay.style.display = 'none';
     });
+
+    const liveSummary = document.getElementById('liveViewSummary');
+    if (liveSummary) {
+        liveSummary.addEventListener('click', async (event) => {
+            if (!event.target.closest('[data-action="end-innings"]')) return;
+            const team = currentTeam();
+            const wicketCap = match.isSuperOver ? 2 : (team.wicketLimit || Math.max(0, (team.batting || []).length - 1));
+            const allOut = (team.wickets || 0) >= wicketCap;
+            const prompt = allOut && substitutePlayers.length
+                ? 'Batting team is all out. OK declares the innings finished and switches innings; Cancel only if a substitute replacement is genuinely needed.'
+                : 'Declare this innings finished and switch to the second innings?';
+            if (!confirm(prompt)) return;
+            try {
+                await postJson(`/turfs/live/${matchId}/end-innings`, { innings: match.currentInnings });
+                refresh();
+            } catch (err) {
+                console.error('end_innings_failed', err);
+            }
+        });
+    }
 
     document.getElementById('confirmCardPicker').addEventListener('click', () => {
         if (!cardPickerSelectedId) {

@@ -4,12 +4,6 @@ const router = express.Router();
 const turfController = require("../controllers/turf.controller");
 const { requireAdmin } = require("../middlewares/auth.middleware");
 
-router.get("/", turfController.index);
-router.post("/create", requireAdmin, turfController.createTurf);
-router.post("/", requireAdmin, turfController.startLive);
-router.get("/session/:id", turfController.showTurfSession);
-router.post("/session/:id/end", requireAdmin, turfController.endTurf);
-router.post("/session/:id/settings", requireAdmin, turfController.updateTurfSettings);
 router.get("/live/:id", turfController.showLive);
 router.get("/live/:id/score", requireAdmin, turfController.showScorePad);
 router.post("/live/:id/end", requireAdmin, turfController.endMatch);

@@ -1,5 +1,4 @@
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "../AuthContext";
 import AuthWidget from "./AuthWidget";
 
 const EXTERNAL_ITEMS = [
@@ -7,7 +6,6 @@ const EXTERNAL_ITEMS = [
 ]
 
 export default function Navbar() {
-  const { isAdmin } = useAuth();
   const { pathname } = useLocation();
 
   return (
@@ -15,12 +13,6 @@ export default function Navbar() {
       <AuthWidget />
       <div className="navbar-float-wrapper">
         <nav className="navbar-pill">
-          {isAdmin && (
-            <a className={`nav-item ${pathname.startsWith("/turfs") ? "active" : ""}`} href="/turfs">
-              <i className="fa-solid fa-map-location-dot nav-icon" />
-              <span className="nav-label">Turfs</span>
-            </a>
-          )}
           <Link className={`nav-item ${pathname.startsWith("/players") ? "active" : ""}`} to="/players">
             <i className="fa-solid fa-people-group nav-icon" />
             <span className="nav-label">Players</span>

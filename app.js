@@ -13,7 +13,7 @@ const turfRoutes = require("./routes/turf.routes");
 const tclRoutes = require("./routes/tcl.routes");
 const pointsRoutes = require("./routes/points.routes");
 const authRoutes = require("./routes/auth.routes");
-const { attachRole, requireAdmin } = require("./middlewares/auth.middleware");
+const { attachRole } = require("./middlewares/auth.middleware");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,27 +48,21 @@ app.use("/", authRoutes);
 app.use("/", pageRoutes);
 app.use("/api/players", playersApiRoutes);
 app.use("/api/teams", teamsApiRoutes); // JSON API for React — admin-gated per-route (create/edit/delete), like players
-app.use("/api/turfs", requireAdmin, turfRoutes); // JSON API for React (content-negotiated)
 app.use("/tcl", tclRoutes); // TCL tournament folders + fixtures; live scoring reuses /turfs/live/:id
 app.use("/points", pointsRoutes);
 
 if (hasReactBuild) {
     // React (Vite build) now owns everything under /players and /teams
     // (list pages + all their sub-routes have real React routes).
-    // requireAdmin still gates /api/turfs at the page level (JSON 403 if the
-    // SPA calls /api/turfs while logged out; the SPA itself hides the nav
-    // link, this is the server-side backstop).
     app.use(express.static(CLIENT_DIST));
     app.get(/^\/(players|teams)(\/.*)?$/, (req, res) => res.sendFile(path.join(CLIENT_DIST, "index.html")));
-
-    // /turfs pages are public read-only views; admin-only actions
-    // are enforced on the turf router itself.
-    app.use("/turfs", turfRoutes);
 } else {
-    console.log("client/dist not found — run `cd client && npm install && npm run build`. Falling back to legacy EJS pages for /players and /turfs for now.");
+    console.log("client/dist not found — run `cd client && npm install && npm run build`. Falling back to legacy EJS pages for /players for now.");
     app.use("/players", playerRoutes);
-    app.use("/turfs", turfRoutes);
 }
+
+// Live Match scoring is shared by TCL; the standalone Turf folder/session UI is not mounted.
+app.use("/turfs", turfRoutes);
 
 app.listen(PORT, () => {
     console.log("server is listening to port " + PORT);

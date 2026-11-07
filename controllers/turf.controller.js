@@ -62,13 +62,41 @@ function matchForBallResponse(match) {
     delete json.processedBallActionIds;
     return json;
 }
+function referenceId(value) {
+    if (!value) return null;
+    if (typeof value.toHexString === "function") return String(value.toHexString());
+    if (typeof value === "object" && value._id && value._id !== value) return referenceId(value._id);
+    if (typeof value === "object" && value.id && value.id !== value) {
+        if (typeof value.id === "string" || typeof value.id === "number") return String(value.id);
+    }
+    return String(value);
+}
 async function getMatchSubstitutes(match) {
     const playingIds = new Set();
     ["team1", "team2"].forEach((key) => {
         [...(match[key].batting || []), ...(match[key].bowling || [])]
             .forEach((row) => playingIds.add(String(row.id)));
     });
-    const players = await Player.find({ _id: { $nin: [...playingIds] } });
+
+    if (typeof Team.find !== "function") return [];
+    const playingTeamIds = new Set([match.team1TeamId, match.team2TeamId]
+        .map(referenceId)
+        .filter(Boolean));
+    const teams = await Team.find({});
+    const reserveTeams = (teams || []).filter((team) =>
+        !playingTeamIds.has(referenceId(team._id)));
+    // In a three-team TCL tournament there is exactly one team that is not
+    // playing this match. Only use that team's squad; never union in every
+    // other team, since deleted/other tournament teams must not be offered.
+    if (reserveTeams.length !== 1) return [];
+
+    const availablePlayerIds = new Set();
+    for (const player of reserveTeams[0].players || []) {
+        const playerId = referenceId(player);
+        if (playerId && !playingIds.has(playerId)) availablePlayerIds.add(playerId);
+    }
+    if (!availablePlayerIds.size) return [];
+    const players = await Player.find({ _id: { $in: [...availablePlayerIds] } });
     return players.map((player) => ({
         id: String(player._id),
         name: player.name,
@@ -605,12 +633,13 @@ async function applyTeamStats(match, team, statsKey) {
                 [`${statsKey}.batting.fours`]: row.fours || 0,
                 [`${statsKey}.batting.sixes`]: row.sixes || 0,
                 [`${statsKey}.batting.ducks`]: timesOut && row.runs === 0 ? 1 : 0,
+                [`${statsKey}.batting.timesOut`]: timesOut,
             },
         };
         const updated = await Player.findByIdAndUpdate(row.id, update, { returnDocument: "after" }).lean();
         if (!updated) throw new Error(`player_not_found:${row.id}`);
         const b = updated[statsKey].batting;
-        const timesOutTotal = b.average > 0 ? Math.round(b.runs / b.average) : 0;
+        const timesOutTotal = b.timesOut || 0;
         const isNewHighest = row.runs > 0 && (row.runs > b.highest
             || (row.runs === b.highest && (!b.highestBalls || row.balls < b.highestBalls)));
         const derived = {
@@ -675,7 +704,7 @@ async function reverseTeamStats(match, teamKey) {
         const player = playersById.get(String(row.id));
         if (!player) continue;
         const batting = player.turfStats.batting;
-        const currentDismissals = batting.average > 0 ? Math.round(batting.runs / batting.average) : 0;
+        const currentDismissals = batting.timesOut || 0;
         const dismissed = row.status === "out" ? 1 : 0;
         batting.matches = Math.max(batting.matches - 1, 0);
         batting.innings = Math.max(batting.innings - 1, 0);
@@ -685,10 +714,11 @@ async function reverseTeamStats(match, teamKey) {
         batting.fours = Math.max(batting.fours - row.fours, 0);
         batting.sixes = Math.max(batting.sixes - row.sixes, 0);
         if (dismissed && row.runs === 0) batting.ducks = Math.max(batting.ducks - 1, 0);
+        batting.timesOut = Math.max(currentDismissals - dismissed, 0);
         batting.strikeRate = batting.ballsFaced > 0
             ? Number(((batting.runs / batting.ballsFaced) * 100).toFixed(2))
             : 0;
-        const remainingDismissals = Math.max(currentDismissals - dismissed, 0);
+        const remainingDismissals = batting.timesOut;
         batting.average = remainingDismissals > 0
             ? Number((batting.runs / remainingDismissals).toFixed(2))
             : batting.runs;
@@ -966,9 +996,28 @@ exports.addSubstitute = async (req, res) => {
 
         const player = await Player.findById(playerId);
         if (!player) return res.status(404).json({ error: "player_not_found" });
-        const battingKey = side === "batting" ? match.currentInnings
-            : (match.currentInnings === "team1" ? "team2" : "team1");
-        const bowlingKey = battingKey === "team1" ? "team2" : "team1";
+        if (typeof Team.find !== "function") return res.status(404).json({ error: "substitute_team_not_found" });
+        const teams = await Team.find({});
+        const playingTeamIds = new Set([match.team1TeamId, match.team2TeamId]
+            .map(referenceId)
+            .filter(Boolean));
+        const reserveTeams = (teams || []).filter((team) =>
+            !playingTeamIds.has(referenceId(team._id)));
+        if (reserveTeams.length !== 1) return res.status(403).json({ error: "reserve_team_not_unique" });
+        const substituteTeam = reserveTeams[0];
+        const belongsToReserveTeam = (substituteTeam.players || [])
+            .some((member) => referenceId(member) === referenceId(player._id));
+        if (!belongsToReserveTeam) return res.status(403).json({ error: "player_not_in_reserve_team" });
+        if (!substituteTeam) return res.status(403).json({ error: "player_not_in_reserve_team" });
+
+        // A substitute has one active match-team role. It is mirrored into
+        // the opposing representation used by the score engine: batting
+        // players are also fielding rows, and fielding players are also
+        // batting rows on the opposing side.
+        const currentKey = match.currentInnings;
+        const opponentKey = currentKey === "team1" ? "team2" : "team1";
+        const battingKey = side === "batting" ? currentKey : opponentKey;
+        const bowlingKey = side === "batting" ? opponentKey : currentKey;
         const battingRow = {
             id: player._id,
             name: player.name,
@@ -1147,6 +1196,9 @@ exports.endInnings = async (req, res) => {
         const match = await Match.findOne({ _id: req.params.id, status: "live" });
         if (!match) return res.status(404).json({ error: "match_not_found" });
         const { innings } = req.body;
+        if (!["team1", "team2"].includes(innings) || innings !== match.currentInnings) {
+            return res.status(400).json({ error: "invalid_innings" });
+        }
         const team = match[innings];
         if (!team) return res.status(400).json({ error: "invalid_innings" });
         clearRedoSnapshots(match);
